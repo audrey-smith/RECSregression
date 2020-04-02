@@ -1,0 +1,59 @@
+---
+title: "RECS Regression"
+author: "Audrey Smith"
+date: "4/2/2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+---
+title: "NV NM CO Residential Energy Consumption"
+author: "Audrey Smith"
+date: "4/2/2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+#install.packages('tidyverse')
+#install.packages('survey')
+
+library(tidyverse)
+library(survey)
+```
+
+```{r - Reading in Data Sets}
+recs15 <- read.csv('residential/recs2015/recs2015_public_v4.csv')
+recsCodes <- read.csv('residential/recs2015/codebook_publicv4.csv')
+```
+
+```{r}
+recs15 <- read.csv('recs2015_public_v4.csv')
+recsCodes <- read.csv('codebook_publicv4.csv')
+```
+
+
+```{r - Defining Sets of Variables for Later Regression}
+recsGeo <- c('DOEID', 'REGIONC', 'DIVISION', 'METROMICRO', 'UATYP10')
+recsHouse <- c('TYPEHUQ', 'ZTYPEHUQ', 'YEARMADERANGE', 'ZYEARMADERANGE', 'STUDIO', 'ZSTUDIO', 'BEDROOMS', 'ZBEDROOMS', 'NCOMBATH', 'ZNCOMBATH', 'NHAFBATH', 'ZNHAFBATH', 'TOTROOMS', 'ZTOTROOMS', 'WALLTYPE', 'ZWALLTYPE', 'ROOFTYPE', 'ZROOFTYPE', 'HIGHCEIL', 'ZHIGHCEIL', 'WINDOWS', 'ZWINDOWS', 'TYPEGLASS', 'ZTYPEGLASS', 'ADQINSUL', 'ZADQINSUL', 'UGASHERE', 'ZUGASHERE', 'POOL', 'ZPOOL', 'SOLAR')
+recsCook <- c('STOVEN', 'ZSTOVEN', 'STOVENFUEL', 'ZSTOVENFUEL', 'DUALCOOKTFUEL', 'ZDUALCOOKTFUEL', 'DUALOVENFUEL', 'ZDUALOVENFUEL')
+recsHeat <- c('HEATHOME', 'ZHEATHOME', 'DNTHEAT', 'ZDNTHEAT', 'EQUIPM', 'ZEQUIPM', 'FUELHEAT', 'ZFUELHEAT', 'EQUIPAGE', 'ZEQUIPAGE', 'THERMAIN', 'ZTHERMAIN', 'PROTHERM', 'ZPROTHERM', 'TEMPHOME', 'ZTEMPHOME', 'TEMPGONE', 'ZTEMPGONE', 'TEMPNITE', 'ZTEMPNITE', 'TOTHSQFT')
+recsCool <- c('AIRCOND', 'ZAIRCOND', 'COOLTYPE', 'ZCOOLTYPE', 'CENACHP', 'ZCENACHP', 'AGECENAC', 'ZAGECENAC', 'THERMAINAC', 'ZTHERMAINAC', 'PROTHERMAC', 'ZPROTHERMAC', 'TEMPHOMEAC', 'ZTEMPHOMEAC', 'TEMPINTEAC', 'ZTEMPNITEAC', 'TOTCSQFT')
+recsClean <- c('DISHWASH', 'ZDISHWASH', 'CWASHER', 'ZCWASHER', 'DRYER', 'ZDRYWER', 'DRYRFUEL', 'ZDRYRFUEL')
+recsWater <- c('FUELH2O', 'ZFUELH2O')
+recsHousehold <- c('HHAGE', 'ZHHAGE', 'SDESCENT', 'ZSDESCENT', 'HOUSEHOLDER_RACE', 'ZHOUSEHOLDER_RACE', 'NHSLDMEM', 'ZNHSLDMEM', 'NUMADULT', 'ZNUMADULT', 'NUMCHILD', 'ZNUMCHILD', 'MONEYPY', 'ZMONEYPY', 'NWEIGHT')
+recsFuels <- c('USEEL', 'ELWARM', 'ELCOOL', 'ELWATER', 'ELFOOD', 'ELOTHER', 'USENG', 'UGWARM', 'UGWATER', 'UGCOOK', 'UGOTH', 'USELP', 'LPWARM', 'LPWATER', 'LPCOOK', 'LPOTHER', 'USEFO', 'FOWARM', 'FOWATER', 'FOOTHER', 'USEWOOD', 'WOODLOGS', 'WDWARM', 'WDWATER', 'USESOLAR', 'SOLWATER', 'SOLOTHER')
+recsClimate <- c('CDD65', 'CLIMATE_REGION_PUB', 'IECC_CLIMATE_PUB', 'HDD65', 'WSF', 'OA_LAT')
+recsUsage <- c('KWHSPH', 'KWHCOL', 'KWHWTH', 'KWHCOK', 'BTUEL', 'BTUELSPH', 'BTUELCOL', 'BTUELWTH', 'BTUELCOK', 'DOLLAREL', 'CUFEETNGSPH', 'CUFEETNGWTH', 'CUFEETNGCOK', 'BTUNG', 'DOLLARNG', 'GALLONLP', 'GALLONLPSPH', 'GALLONLPWTH', 'GALLONLPCOK', 'BTULP', 'BTULPSPH', 'BTULPWTH', 'BTULPCOK', 'DOLLARLP', 'GALLONFO', 'GALLONFOSPH', 'GALLONFOWTH', 'GALLONFONEC', 'BTUFO', 'DOLLARFO', 'TOTALBTU', 'TOTALDOL', 'TOTALBTUSPH', 'TOTALDOLSPH', 'TOTALBTUWTH', 'TOTALDOLWTH', 'TOTALBTUCOK', 'TOTALDOLCOK', 'WOODAMT', 'ZWOODAMT')
+```
+
+```{r - Filtering to Households of Interest}
+recsMountain <- dplyr::filter(recs15, DIVISION == 8 | DIVISION == 9)  #I think they're all Mountain South but having a hard time verifying? This would be 9
+```
+
