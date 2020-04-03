@@ -1,25 +1,17 @@
 ---
-title: "RECS Regression"
-author: "Audrey Smith"
-date: "4/2/2020"
-output: html_document
----
-
-```{r setup, include=FALSE}
-knitr::opts_chunk$set(echo = TRUE)
-```
-
----
 title: "NV NM CO Residential Energy Consumption"
 author: "Audrey Smith"
 date: "4/2/2020"
 output: html_document
 ---
 
+_Setting up .rmd file_
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
 ```
 
+Installing and library data cleaning and analysis libraries
+Survey documentation, including useful example can be found with command ??survey
 ```{r}
 #install.packages('tidyverse')
 #install.packages('survey')
@@ -28,23 +20,32 @@ library(tidyverse)
 library(survey)
 ```
 
-```{r - Reading in Data Sets}
-recs15 <- read.csv('residential/recs2015/recs2015_public_v4.csv')
-recsCodes <- read.csv('residential/recs2015/codebook_publicv4.csv')
-```
+_Reading in and Prepping Data_
+Reading in dataset, 2015 RECS data, along with accompanying data library
+Library contains explanations of each variable, universe of responses, imputation codes, etc.
+For a quick tutorial on how to work with this data set and the Survey package, see the read me document included in the Git Hub repo.
 
 ```{r}
-recs15 <- read.csv('recs2015_public_v4.csv')
-recsCodes <- read.csv('codebook_publicv4.csv')
+recs15 <- read.csv('C:/Users/18313/Desktop/localWork/nvNMco/analysis/RECSregression/recs2015_public_v4.csv')
+#recsCodes <- read.csv('C:/Users/18313/Desktop/localWork/nvNMco/analysis/RECSregression/codebook_publicv4.csv')
+
+head(recs15)
+#head(recsCodes)
+```
+Here, I filter to the Mountain South Census region. Can also unfilter and include entire U.S., entire Mountain Region, etc. if we want a larger sample size. I've filtered to narrow our scope and not introduce variables which may vary on a national basis but less on a regional basis.
+```{r}
+recsMountain <- dplyr::filter(recs15, DIVISION == 9)
+
+head(recsMountain)
 ```
 
-
-```{r - Defining Sets of Variables for Later Regression}
+Here I define variable sets that are potentially of use as independent variables in our regression. This process was qualitative and simply consisted of me reading through dataset for variables that intuitively seem they may be pertinent to our response variables. Later, will use PCA or some comparable method to do a more quantitative variable selection. See recsCodes object for explanation of any given variable below.
+```{r}
 recsGeo <- c('DOEID', 'REGIONC', 'DIVISION', 'METROMICRO', 'UATYP10')
-recsHouse <- c('TYPEHUQ', 'ZTYPEHUQ', 'YEARMADERANGE', 'ZYEARMADERANGE', 'STUDIO', 'ZSTUDIO', 'BEDROOMS', 'ZBEDROOMS', 'NCOMBATH', 'ZNCOMBATH', 'NHAFBATH', 'ZNHAFBATH', 'TOTROOMS', 'ZTOTROOMS', 'WALLTYPE', 'ZWALLTYPE', 'ROOFTYPE', 'ZROOFTYPE', 'HIGHCEIL', 'ZHIGHCEIL', 'WINDOWS', 'ZWINDOWS', 'TYPEGLASS', 'ZTYPEGLASS', 'ADQINSUL', 'ZADQINSUL', 'UGASHERE', 'ZUGASHERE', 'POOL', 'ZPOOL', 'SOLAR')
+recsBuilding <- c('TYPEHUQ', 'ZTYPEHUQ', 'YEARMADERANGE', 'ZYEARMADERANGE', 'STUDIO', 'ZSTUDIO', 'BEDROOMS', 'ZBEDROOMS', 'NCOMBATH', 'ZNCOMBATH', 'NHAFBATH', 'ZNHAFBATH', 'TOTROOMS', 'ZTOTROOMS', 'WALLTYPE', 'ZWALLTYPE', 'ROOFTYPE', 'ZROOFTYPE', 'HIGHCEIL', 'ZHIGHCEIL', 'WINDOWS', 'ZWINDOWS', 'TYPEGLASS', 'ZTYPEGLASS', 'ADQINSUL', 'ZADQINSUL', 'UGASHERE', 'ZUGASHERE', 'POOL', 'ZPOOL', 'SOLAR')
 recsCook <- c('STOVEN', 'ZSTOVEN', 'STOVENFUEL', 'ZSTOVENFUEL', 'DUALCOOKTFUEL', 'ZDUALCOOKTFUEL', 'DUALOVENFUEL', 'ZDUALOVENFUEL')
 recsHeat <- c('HEATHOME', 'ZHEATHOME', 'DNTHEAT', 'ZDNTHEAT', 'EQUIPM', 'ZEQUIPM', 'FUELHEAT', 'ZFUELHEAT', 'EQUIPAGE', 'ZEQUIPAGE', 'THERMAIN', 'ZTHERMAIN', 'PROTHERM', 'ZPROTHERM', 'TEMPHOME', 'ZTEMPHOME', 'TEMPGONE', 'ZTEMPGONE', 'TEMPNITE', 'ZTEMPNITE', 'TOTHSQFT')
-recsCool <- c('AIRCOND', 'ZAIRCOND', 'COOLTYPE', 'ZCOOLTYPE', 'CENACHP', 'ZCENACHP', 'AGECENAC', 'ZAGECENAC', 'THERMAINAC', 'ZTHERMAINAC', 'PROTHERMAC', 'ZPROTHERMAC', 'TEMPHOMEAC', 'ZTEMPHOMEAC', 'TEMPINTEAC', 'ZTEMPNITEAC', 'TOTCSQFT')
+#recsCool <- c('AIRCOND', 'ZAIRCOND', 'COOLTYPE', 'ZCOOLTYPE', 'CENACHP', 'ZCENACHP', 'AGECENAC', 'ZAGECENAC', 'THERMAINAC', 'ZTHERMAINAC', 'PROTHERMAC', 'ZPROTHERMAC', 'TEMPHOMEAC', 'ZTEMPHOMEAC', 'TEMPINTEAC', 'ZTEMPNITEAC', 'TOTCSQFT')
 recsClean <- c('DISHWASH', 'ZDISHWASH', 'CWASHER', 'ZCWASHER', 'DRYER', 'ZDRYWER', 'DRYRFUEL', 'ZDRYRFUEL')
 recsWater <- c('FUELH2O', 'ZFUELH2O')
 recsHousehold <- c('HHAGE', 'ZHHAGE', 'SDESCENT', 'ZSDESCENT', 'HOUSEHOLDER_RACE', 'ZHOUSEHOLDER_RACE', 'NHSLDMEM', 'ZNHSLDMEM', 'NUMADULT', 'ZNUMADULT', 'NUMCHILD', 'ZNUMCHILD', 'MONEYPY', 'ZMONEYPY', 'NWEIGHT')
@@ -53,7 +54,94 @@ recsClimate <- c('CDD65', 'CLIMATE_REGION_PUB', 'IECC_CLIMATE_PUB', 'HDD65', 'WS
 recsUsage <- c('KWHSPH', 'KWHCOL', 'KWHWTH', 'KWHCOK', 'BTUEL', 'BTUELSPH', 'BTUELCOL', 'BTUELWTH', 'BTUELCOK', 'DOLLAREL', 'CUFEETNGSPH', 'CUFEETNGWTH', 'CUFEETNGCOK', 'BTUNG', 'DOLLARNG', 'GALLONLP', 'GALLONLPSPH', 'GALLONLPWTH', 'GALLONLPCOK', 'BTULP', 'BTULPSPH', 'BTULPWTH', 'BTULPCOK', 'DOLLARLP', 'GALLONFO', 'GALLONFOSPH', 'GALLONFOWTH', 'GALLONFONEC', 'BTUFO', 'DOLLARFO', 'TOTALBTU', 'TOTALDOL', 'TOTALBTUSPH', 'TOTALDOLSPH', 'TOTALBTUWTH', 'TOTALDOLWTH', 'TOTALBTUCOK', 'TOTALDOLCOK', 'WOODAMT', 'ZWOODAMT')
 ```
 
-```{r - Filtering to Households of Interest}
-recsMountain <- dplyr::filter(recs15, DIVISION == 8 | DIVISION == 9)  #I think they're all Mountain South but having a hard time verifying? This would be 9
+```{r}
+recsBrr <- recs15[,grepl('^BRRWT', names(recs15))]
+recsBrrCol <- colnames(recsBrr)
 ```
+
+Variable groupings used by Min et al.
+```{r}
+minWH <- c('HHAGE', 'TOTROOMS', 'HOUSEHOLDER_RACE', 'HDD65', 'MONEYPY', 'NUMADULT', 'NUMCHILD', 'FUELH2O', 'WHEATSIZ', 'DISHWASH', 'WASHTEMP', 'NWEIGHT') #Omitted - Elec. price for households using elec. water heater
+
+minSH <- c('HHAGE', 'YEARMADERANGE', 'TOTSQFT_EN', 'HDD65', 'MONEYPY', 'TYPEHUQ', 'TEMPHOME', 'TEMPGONE', 'DIVISION', 'EQUIPAGE', 'FUELHEAT', 'NWEIGHT') #type of fuel omitted for now
+```
+
+_Preliminary Regressions_
+```{r}
+minWHweights <- minWHrecs$NWEIGHT
+minWHbrr <- minWHrecs[,grepl('^BRRWT', names(minWHrecs))]
+
+minWHrecs <- dplyr::select(recsMountain, c(minWH, recsUsage, recsBrrCol)) %>%
+  mutate(logWHkwh = log(KWHWTH)) %>%
+  filter(FUELH2O != 5 & FUELH2O != 8) #not electric or solar
+
+minSHrecs <- dplyr::select(recsMountain, c(minSH, recsUsage, recsBrrCol)) %>%
+  mutate(logSHkwh = log(KWHSPH)) %>%
+  filter(FUELHEAT != 5)
+
+minSHweights <- minSHrecs$NWEIGHT
+minSHbrr <- minSHrecs[,grepl('^BRRWT', names(minSHrecs))]
+```
+
+__Water Heating__
+```{r}
+minWHdes <- svrepdesign(weights = minWHweights, repweights = minWHbrr, type = 'Fay', rho = 0.5, mse = TRUE, data = minWHrecs) #Fay is resampling method, Rho is shrinkage factor for weights
+
+minWHmodel <- svyglm(formula = KWHWTH~TOTROOMS+TOTROOMS^2+HHAGE+HDD65+HDD65^2+NUMCHILD+NUMADULT+WHEATSIZ+WASHTEMP+MONEYPY, design = minWHdes, family = 'binomial')
+```
+
+```{r}
+summary(minWHmodel)
+```
+
+__Space Heating__
+```{r}
+minSHdes <- svrepdesign(weights = minSHweights, repweights = minSHbrr, type = 'Fay', rho = 0.5, mse = TRUE, data = minSHrecs) #Fay is resampling method, Rho is shrinkage factor for weights
+
+minSHmodel <- svyglm(formula = KWHSPH~HHAGE+TOTSQFT_EN+MONEYPY+HDD65+HDD65^2+TEMPHOME+TEMPGONE+EQUIPAGE, design = minSHdes, family = 'gaussian')
+```
+
+```{r}
+summary(minSHmodel)
+```
+
+_Notes_
+This exercise has been to get acquainted with model fitting with RECS data, which presents some new circumstances because of the complex sampling approach. Any output here is extremely preliminary and uses independent variables which have been proven to be significant for nationwide variables, but not for our data. Next steps include the following:
+  -More thorough assumption checking - specifically need to distributions
+  -Identify important predictors specific to the Mountain South Region. I am considering doing PCA, backwards selection, etc. and would love to hear others' thoughts on model fitting methodologies
+  -Run this process for space heating, water heating, and non-electrical applicance use
+  -Use coefficients to extrapolate to census tract level
+  -Code categorical variables properly, presently omitted
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
