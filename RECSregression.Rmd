@@ -1,7 +1,7 @@
 ---
-title: "NV NM CO Residential Energy Consumption"
+title: "Energy Equity Residential Energy Consumption"
 author: "Audrey Smith"
-date: "4/2/2020"
+date: "4/29/2020"
 output: html_document
 ---
 
@@ -10,8 +10,8 @@ _Setting up .rmd file_
 knitr::opts_chunk$set(echo = TRUE)
 ```
 
-Installing and library data cleaning and analysis libraries
-Survey documentation, including useful example can be found with command ??survey
+Installing and librarying packages - tidyverse for data cleaning and manipulation, survey for working with survey data
+Survey documentation, including useful example can be found with command ??survey. Also described in context of RECS data in RECS technical documentation.
 ```{r}
 #install.packages('tidyverse')
 #install.packages('survey')
@@ -21,93 +21,151 @@ library(survey)
 ```
 
 _Reading in and Prepping Data_
-Reading in dataset, 2015 RECS data, along with accompanying data library
-Library contains explanations of each variable, universe of responses, imputation codes, etc.
+Reading in 2015 RECS data along with accompanying data library. 
+Library contains explanations of each variable, universe of responses, imputation codes, etc. Note that data library is incomplete here as it is not formatted in a .csv-friendly way. It is best viewed in the .xlsx file attached to the repo.
 For a quick tutorial on how to work with this data set and the Survey package, see the read me document included in the Git Hub repo.
+```{r - Raw Data}
+recs15 <- read.csv('recs2015_public_v4.csv')
+#recsCodes <- read.csv('codebook_publicv4.csv')
 
-```{r}
-recs15 <- read.csv('C:/Users/18313/Desktop/localWork/nvNMco/analysis/RECSregression/recs2015_public_v4.csv')
-#recsCodes <- read.csv('C:/Users/18313/Desktop/localWork/nvNMco/analysis/RECSregression/codebook_publicv4.csv')
-
-head(recs15)
-#head(recsCodes)
-```
-Here, I filter to the Mountain South Census region. Can also unfilter and include entire U.S., entire Mountain Region, etc. if we want a larger sample size. I've filtered to narrow our scope and not introduce variables which may vary on a national basis but less on a regional basis.
-```{r}
-recsMountain <- dplyr::filter(recs15, DIVISION == 9)
-
-head(recsMountain)
+recs09 <- read.csv('recs2009_public.csv')
 ```
 
-Here I define variable sets that are potentially of use as independent variables in our regression. This process was qualitative and simply consisted of me reading through dataset for variables that intuitively seem they may be pertinent to our response variables. Later, will use PCA or some comparable method to do a more quantitative variable selection. See recsCodes object for explanation of any given variable below.
-```{r}
-recsGeo <- c('DOEID', 'REGIONC', 'DIVISION', 'METROMICRO', 'UATYP10')
-recsBuilding <- c('TYPEHUQ', 'ZTYPEHUQ', 'YEARMADERANGE', 'ZYEARMADERANGE', 'STUDIO', 'ZSTUDIO', 'BEDROOMS', 'ZBEDROOMS', 'NCOMBATH', 'ZNCOMBATH', 'NHAFBATH', 'ZNHAFBATH', 'TOTROOMS', 'ZTOTROOMS', 'WALLTYPE', 'ZWALLTYPE', 'ROOFTYPE', 'ZROOFTYPE', 'HIGHCEIL', 'ZHIGHCEIL', 'WINDOWS', 'ZWINDOWS', 'TYPEGLASS', 'ZTYPEGLASS', 'ADQINSUL', 'ZADQINSUL', 'UGASHERE', 'ZUGASHERE', 'POOL', 'ZPOOL', 'SOLAR')
-recsCook <- c('STOVEN', 'ZSTOVEN', 'STOVENFUEL', 'ZSTOVENFUEL', 'DUALCOOKTFUEL', 'ZDUALCOOKTFUEL', 'DUALOVENFUEL', 'ZDUALOVENFUEL')
-recsHeat <- c('HEATHOME', 'ZHEATHOME', 'DNTHEAT', 'ZDNTHEAT', 'EQUIPM', 'ZEQUIPM', 'FUELHEAT', 'ZFUELHEAT', 'EQUIPAGE', 'ZEQUIPAGE', 'THERMAIN', 'ZTHERMAIN', 'PROTHERM', 'ZPROTHERM', 'TEMPHOME', 'ZTEMPHOME', 'TEMPGONE', 'ZTEMPGONE', 'TEMPNITE', 'ZTEMPNITE', 'TOTHSQFT')
-#recsCool <- c('AIRCOND', 'ZAIRCOND', 'COOLTYPE', 'ZCOOLTYPE', 'CENACHP', 'ZCENACHP', 'AGECENAC', 'ZAGECENAC', 'THERMAINAC', 'ZTHERMAINAC', 'PROTHERMAC', 'ZPROTHERMAC', 'TEMPHOMEAC', 'ZTEMPHOMEAC', 'TEMPINTEAC', 'ZTEMPNITEAC', 'TOTCSQFT')
-recsClean <- c('DISHWASH', 'ZDISHWASH', 'CWASHER', 'ZCWASHER', 'DRYER', 'ZDRYWER', 'DRYRFUEL', 'ZDRYRFUEL')
-recsWater <- c('FUELH2O', 'ZFUELH2O')
-recsHousehold <- c('HHAGE', 'ZHHAGE', 'SDESCENT', 'ZSDESCENT', 'HOUSEHOLDER_RACE', 'ZHOUSEHOLDER_RACE', 'NHSLDMEM', 'ZNHSLDMEM', 'NUMADULT', 'ZNUMADULT', 'NUMCHILD', 'ZNUMCHILD', 'MONEYPY', 'ZMONEYPY', 'NWEIGHT')
-recsFuels <- c('USEEL', 'ELWARM', 'ELCOOL', 'ELWATER', 'ELFOOD', 'ELOTHER', 'USENG', 'UGWARM', 'UGWATER', 'UGCOOK', 'UGOTH', 'USELP', 'LPWARM', 'LPWATER', 'LPCOOK', 'LPOTHER', 'USEFO', 'FOWARM', 'FOWATER', 'FOOTHER', 'USEWOOD', 'WOODLOGS', 'WDWARM', 'WDWATER', 'USESOLAR', 'SOLWATER', 'SOLOTHER')
-recsClimate <- c('CDD65', 'CLIMATE_REGION_PUB', 'IECC_CLIMATE_PUB', 'HDD65', 'WSF', 'OA_LAT')
-recsUsage <- c('KWHSPH', 'KWHCOL', 'KWHWTH', 'KWHCOK', 'BTUEL', 'BTUELSPH', 'BTUELCOL', 'BTUELWTH', 'BTUELCOK', 'DOLLAREL', 'CUFEETNGSPH', 'CUFEETNGWTH', 'CUFEETNGCOK', 'BTUNG', 'DOLLARNG', 'GALLONLP', 'GALLONLPSPH', 'GALLONLPWTH', 'GALLONLPCOK', 'BTULP', 'BTULPSPH', 'BTULPWTH', 'BTULPCOK', 'DOLLARLP', 'GALLONFO', 'GALLONFOSPH', 'GALLONFOWTH', 'GALLONFONEC', 'BTUFO', 'DOLLARFO', 'TOTALBTU', 'TOTALDOL', 'TOTALBTUSPH', 'TOTALDOLSPH', 'TOTALBTUWTH', 'TOTALDOLWTH', 'TOTALBTUCOK', 'TOTALDOLCOK', 'WOODAMT', 'ZWOODAMT')
-```
-
-```{r}
-recsBrr <- recs15[,grepl('^BRRWT', names(recs15))]
+```{r - Population Weights}
+recsBrr <- recs15[,grepl('^BRRWT', colnames(recs15))]
 recsBrrCol <- colnames(recsBrr)
 ```
 
-Variable groupings used by Min et al.
-```{r}
-minWH <- c('HHAGE', 'TOTROOMS', 'HOUSEHOLDER_RACE', 'HDD65', 'MONEYPY', 'NUMADULT', 'NUMCHILD', 'FUELH2O', 'WHEATSIZ', 'DISHWASH', 'WASHTEMP', 'NWEIGHT') #Omitted - Elec. price for households using elec. water heater
+Here I define variable sets that are potentially of use as independent variables in our regression. This process was qualitative and simply consisted of me reading through dataset for variables that intuitively seem they may be pertinent to our response variables. For now we are working with the variables featured in Min et al., but these or others could later be integrated as we refine our model.
+```{r - Variables of Interest by Group}
+recsGeo <- c('DOEID', 'REGIONC', 'DIVISION', 'METROMICRO', 'UATYP10')
 
-minSH <- c('HHAGE', 'YEARMADERANGE', 'TOTSQFT_EN', 'HDD65', 'MONEYPY', 'TYPEHUQ', 'TEMPHOME', 'TEMPGONE', 'DIVISION', 'EQUIPAGE', 'FUELHEAT', 'NWEIGHT') #type of fuel omitted for now
+recsBuilding <- c('TYPEHUQ', 'ZTYPEHUQ', 'YEARMADERANGE', 'ZYEARMADERANGE', 'STUDIO', 'ZSTUDIO', 'BEDROOMS', 'ZBEDROOMS', 'NCOMBATH', 'ZNCOMBATH', 'NHAFBATH', 'ZNHAFBATH', 'TOTROOMS', 'ZTOTROOMS', 'WALLTYPE', 'ZWALLTYPE', 'ROOFTYPE', 'ZROOFTYPE', 'HIGHCEIL', 'ZHIGHCEIL', 'WINDOWS', 'ZWINDOWS', 'TYPEGLASS', 'ZTYPEGLASS', 'ADQINSUL', 'ZADQINSUL', 'UGASHERE', 'ZUGASHERE', 'POOL', 'ZPOOL', 'SOLAR')
+
+recsCook <- c('STOVEN', 'ZSTOVEN', 'STOVENFUEL', 'ZSTOVENFUEL', 'DUALCOOKTFUEL', 'ZDUALCOOKTFUEL', 'DUALOVENFUEL', 'ZDUALOVENFUEL')
+
+recsHeat <- c('HEATHOME', 'ZHEATHOME', 'DNTHEAT', 'ZDNTHEAT', 'EQUIPM', 'ZEQUIPM', 'FUELHEAT', 'ZFUELHEAT', 'EQUIPAGE', 'ZEQUIPAGE', 'THERMAIN', 'ZTHERMAIN', 'PROTHERM', 'ZPROTHERM', 'TEMPHOME', 'ZTEMPHOME', 'TEMPGONE', 'ZTEMPGONE', 'TEMPNITE', 'ZTEMPNITE', 'TOTHSQFT')
+
+#recsCool <- c('AIRCOND', 'ZAIRCOND', 'COOLTYPE', 'ZCOOLTYPE', 'CENACHP', 'ZCENACHP', 'AGECENAC', 'ZAGECENAC', 'THERMAINAC', 'ZTHERMAINAC', 'PROTHERMAC', 'ZPROTHERMAC', 'TEMPHOMEAC', 'ZTEMPHOMEAC', 'TEMPINTEAC', 'ZTEMPNITEAC', 'TOTCSQFT')
+
+recsClean <- c('DISHWASH', 'ZDISHWASH', 'CWASHER', 'ZCWASHER', 'DRYER', 'ZDRYWER', 'DRYRFUEL', 'ZDRYRFUEL')
+
+recsWater <- c('FUELH2O', 'ZFUELH2O')
+
+recsHousehold <- c('HHAGE', 'ZHHAGE', 'SDESCENT', 'ZSDESCENT', 'HOUSEHOLDER_RACE', 'ZHOUSEHOLDER_RACE', 'NHSLDMEM', 'ZNHSLDMEM', 'NUMADULT', 'ZNUMADULT', 'NUMCHILD', 'ZNUMCHILD', 'MONEYPY', 'ZMONEYPY', 'NWEIGHT')
+
+recsFuels <- c('USEEL', 'ELWARM', 'ELCOOL', 'ELWATER', 'ELFOOD', 'ELOTHER', 'USENG', 'UGWARM', 'UGWATER', 'UGCOOK', 'UGOTH', 'USELP', 'LPWARM', 'LPWATER', 'LPCOOK', 'LPOTHER', 'USEFO', 'FOWARM', 'FOWATER', 'FOOTHER', 'USEWOOD', 'WOODLOGS', 'WDWARM', 'WDWATER', 'USESOLAR', 'SOLWATER', 'SOLOTHER')
+
+recsClimate <- c('CDD65', 'CLIMATE_REGION_PUB', 'IECC_CLIMATE_PUB', 'HDD65', 'WSF', 'OA_LAT')
+
+recsUsage <- c('KWHSPH', 'KWHCOL', 'KWHWTH', 'KWHCOK', 'BTUEL', 'BTUELSPH', 'BTUELCOL', 'BTUELWTH', 'BTUELCOK', 'DOLLAREL', 'CUFEETNGSPH', 'CUFEETNGWTH', 'CUFEETNGCOK', 'BTUNG', 'DOLLARNG', 'GALLONLP', 'GALLONLPSPH', 'GALLONLPWTH', 'GALLONLPCOK', 'BTULP', 'BTULPSPH', 'BTULPWTH', 'BTULPCOK', 'DOLLARLP', 'GALLONFO', 'GALLONFOSPH', 'GALLONFOWTH', 'GALLONFONEC', 'BTUFO', 'DOLLARFO', 'TOTALBTU', 'TOTALDOL', 'TOTALBTUSPH', 'TOTALDOLSPH', 'TOTALBTUWTH', 'TOTALDOLWTH', 'TOTALBTUCOK', 'TOTALDOLCOK', 'WOODAMT', 'ZWOODAMT')
 ```
 
-_Preliminary Regressions_
+_Re-creating Min Space Heating_
+Discrepancies / [Musings]:
+- year_built [Why no var for after 70s? - RECS has up 10 year intervals up to 2015]
+- division [May need to be re-worked for mountain south]
+- fuelheat missing solar [Not an option on this year of RECS data] and electric [filtered out]
+- urban/rural [Unsure what they did with urban clusters. I have tentatively coded them as cities]
+- did not include price of electricity for homes using electric heating equip
+- concrete slab does not seem to be a variable on this data year
+- [some factor variables are used to represent continuous variables - did they leave as integers and use a continuous predictors or recode as factors?]
+- [whether or not householder is black doesn't seem as relevant in our states]
 ```{r}
-minWHweights <- minWHrecs$NWEIGHT
-minWHbrr <- minWHrecs[,grepl('^BRRWT', names(minWHrecs))]
+#Checking Distribution of Outcome Variable
+ggplot(data = minSHrecs) + geom_histogram(aes(x = TOTALBTUSPH))
+```
 
-minWHrecs <- dplyr::select(recsMountain, c(minWH, recsUsage, recsBrrCol)) %>%
-  mutate(logWHkwh = log(KWHWTH)) %>%
-  filter(FUELH2O != 5 & FUELH2O != 8) #not electric or solar
+```{r - Filter Dataset to selected variables}
+#Create vector of variable names used in the paper
+minSH <- c('HEATHOME', 'NWEIGHT', 'HHAGE', 'YEARMADERANGE', 'TOTSQFT_EN', 'HDD65', 'MONEYPY', 'TYPEHUQ', 'TEMPHOME', 'TEMPGONE', 'DIVISION', 'EQUIPAGE', 'FUELHEAT', 'WALLTYPE', 'UATYP10',  'WINDOWS', 'HOUSEHOLDER_RACE')
 
-minSHrecs <- dplyr::select(recsMountain, c(minSH, recsUsage, recsBrrCol)) %>%
-  mutate(logSHkwh = log(KWHSPH)) %>%
-  filter(FUELHEAT != 5)
+#Select columns of interest, filter out homes electrically heated
+minSHrecs <- dplyr::select(recs15, c(minSH, recsUsage, recsBrrCol)) %>%
+  filter(FUELHEAT != 5) %>%
+  filter(HEATHOME == 1)
 
+#Converting categorical variables to dummy vars
+minSHrecs$multifamYN <- as.factor(ifelse(minSHrecs$TYPEHUQ == 5, 1, 0))
+minSHrecs$yearmade40 <- as.factor(ifelse(minSHrecs$YEARMADERANGE == 1, 1, 0))
+minSHrecs$yearmade50 <- as.factor(ifelse(minSHrecs$YEARMADERANGE == 2, 1, 0))
+minSHrecs$yearmade60 <- as.factor(ifelse(minSHrecs$YEARMADERANGE == 3, 1, 0))
+minSHrecs$yearmade70 <- as.factor(ifelse(minSHrecs$YEARMADERANGE == 4, 1, 0))
+minSHrecs$divisionENC <- as.factor(ifelse(minSHrecs$DIVISION == 3, 1, 0))
+minSHrecs$divisionWNC <- as.factor(ifelse(minSHrecs$DIVISION == 4, 1, 0))
+minSHrecs$fuelheatOil <- as.factor(ifelse(minSHrecs$FUELHEAT == 3, 1, 0))
+minSHrecs$fuelheatWood <- as.factor(ifelse(minSHrecs$FUELHEAT == 7, 1, 0))
+minSHrecs$fuelheatOther <- as.factor(ifelse(minSHrecs$FUELHEAT == 21, 1, 0))
+minSHrecs$walltypeBrick <- as.factor(ifelse(minSHrecs$WALLTYPE == 1, 1, 0))
+minSHrecs$walltypeWood <- as.factor(ifelse(minSHrecs$WALLTYPE == 2, 1, 0))
+minSHrecs$urbanYN <- as.factor(ifelse(minSHrecs$UATYP10 == 'U' | minSHrecs$UATYP10 == 'C', 1, 0))
+minSHrecs$blackYN <- as.factor(ifelse(minSHrecs$HOUSEHOLDER_RACE == 2, 1, 0))
+
+#Generating square terms
+minSHrecs$hddSq <- minSHrecs$HDD65^2
+minSHrecs$equipageSq <- minSHrecs$EQUIPAGE^2
+
+#Generating ln for response variable due to skewness
+minSHrecs$logKWH <- log(minSHrecs$KWHSPH)
+
+ggplot(data = minSHrecs) + geom_histogram(aes(x = log(TOTALBTUSPH)))
+```
+
+```{r - Assign weights}
 minSHweights <- minSHrecs$NWEIGHT
 minSHbrr <- minSHrecs[,grepl('^BRRWT', names(minSHrecs))]
 ```
 
-__Water Heating__
-```{r}
+Unsure how to treat zeroes. They do not let the model converge. I have added a small constant to each value (0.00001) to get around this problem for the time being, but let's discuss.
+```{r - Regression}
+minSHdes <- svrepdesign(weights = minSHweights, repweights = minSHbrr, type = 'Fay', rho = 0.5, mse = TRUE, data = minSHrecs) #Fay is resampling method, Rho is shrinkage factor for weights
+
+minSHmodel <- svyglm(formula = log(TOTALBTUSPH+.00001) ~ HHAGE + yearmade40 + yearmade50 + yearmade60 + yearmade70 + TOTSQFT_EN + HDD65 + hddSq + MONEYPY + multifamYN + TEMPHOME + TEMPGONE + divisionWNC + divisionENC + equipageSq + fuelheatOil + fuelheatWood + fuelheatOther + walltypeBrick + walltypeWood + urbanYN + blackYN + WINDOWS, design = minSHdes, family = 'gaussian')
+
+minSHmodel
+```
+
+Note that the AIC is huge, indicating this is not a particularly good fit for our data.
+
+_Re-creating Min Water Heating_
+The following discrepancies between our regressions and those of Min et al. presently exist:
+-Need imputation terms
+- Need square terms 
+    -can't tell if n rooms supposed to be squared or not?
+    -need to square HDD
+    -need square of NHSLDMEM
+- Because electric use is already accounted for in power sector calculations:
+    -Filtered out homes using electric or solar
+    -Did not include electricity price for households using electric water heater as variable
+- origin1_2/householder_race needs recode to 0 for not black, 1 for black
+- fuel H2O is one categorical variable, needs to be recoded into 3 dummy vars (natural gas, LPG/propane, electricity [exclude electricity?])
+- wash temp should be three dummy variables (hot, warm, cold)
+```{r - Filter to selected variables}
+minWH <- c('HHAGE', 'NWEIGHT', 'TOTROOMS', 'HOUSEHOLDER_RACE', 'HDD65', 'MONEYPY', 'NHSLDMEM', 'FUELH2O', 'WHEATSIZ', 'DISHWASH', 'WASHTEMP') 
+
+minWHrecs <- dplyr::select(recs15, c(minWH, recsUsage, recsBrrCol)) %>%
+  mutate(logWHkwh = log(KWHWTH)) %>%
+  filter(FUELH2O != 5 & FUELH2O != 8) #not electric or solar
+```
+
+```{r - Assign weights}
+minWHweights <- minWHrecs$NWEIGHT
+minWHbrr <- minWHrecs[,grepl('^BRRWT', names(minWHrecs))]
+```
+
+```{r - Regression}
 minWHdes <- svrepdesign(weights = minWHweights, repweights = minWHbrr, type = 'Fay', rho = 0.5, mse = TRUE, data = minWHrecs) #Fay is resampling method, Rho is shrinkage factor for weights
 
 minWHmodel <- svyglm(formula = KWHWTH~TOTROOMS+TOTROOMS^2+HHAGE+HDD65+HDD65^2+NUMCHILD+NUMADULT+WHEATSIZ+WASHTEMP+MONEYPY, design = minWHdes, family = 'binomial')
 ```
 
-```{r}
+```{r - Results}
 summary(minWHmodel)
 ```
 
-__Space Heating__
-```{r}
-minSHdes <- svrepdesign(weights = minSHweights, repweights = minSHbrr, type = 'Fay', rho = 0.5, mse = TRUE, data = minSHrecs) #Fay is resampling method, Rho is shrinkage factor for weights
-
-minSHmodel <- svyglm(formula = KWHSPH~HHAGE+TOTSQFT_EN+MONEYPY+HDD65+HDD65^2+TEMPHOME+TEMPGONE+EQUIPAGE, design = minSHdes, family = 'gaussian')
-```
-
-```{r}
-summary(minSHmodel)
-```
-
 _Notes_
-This exercise has been to get acquainted with model fitting with RECS data, which presents some new circumstances because of the complex sampling approach. Any output here is extremely preliminary and uses independent variables which have been proven to be significant for nationwide variables, but not for our data. Next steps include the following:
-  -More thorough assumption checking - specifically need to distributions
+This exercise has been to get acquainted with model fitting with RECS data, which presents some new circumstances because of the complex sampling approach. Any output here is extremely preliminary and uses independent variables which have been proven to be significant for nationwide variables but not necessarily for our data. Next steps include the following:
+  -More thorough assumption checking - specifically need variable distributions and checks for colinearity
   -Identify important predictors specific to the Mountain South Region. I am considering doing PCA, backwards selection, etc. and would love to hear others' thoughts on model fitting methodologies
   -Run this process for space heating, water heating, and non-electrical applicance use
   -Use coefficients to extrapolate to census tract level
