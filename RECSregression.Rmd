@@ -26,14 +26,16 @@ Library contains explanations of each variable, universe of responses, imputatio
 For a quick tutorial on how to work with this data set and the Survey package, see the read me document included in the Git Hub repo.
 ```{r - Raw Data}
 recs15 <- read.csv('recs2015_public_v4.csv')
-#recsCodes <- read.csv('codebook_publicv4.csv')
-
-recs09 <- read.csv('recs2009_public.csv')
+recs09 <- read.csv('oldRECSdata/recs2009_public.csv')
+recs05 <- read.csv('oldRECSdata/RECS05alldata.csv')
 ```
 
 ```{r - Population Weights}
 recsBrr <- recs15[,grepl('^BRRWT', colnames(recs15))]
 recsBrrCol <- colnames(recsBrr)
+
+recsBrr05 <- recs05[,grepl('^BRRWT', colnames(recs05))]
+recsBrrCol05 <- colnames(recsBrr05)
 ```
 
 Here I define variable sets that are potentially of use as independent variables in our regression. This process was qualitative and simply consisted of me reading through dataset for variables that intuitively seem they may be pertinent to our response variables. For now we are working with the variables featured in Min et al., but these or others could later be integrated as we refine our model.
@@ -61,16 +63,17 @@ recsClimate <- c('CDD65', 'CLIMATE_REGION_PUB', 'IECC_CLIMATE_PUB', 'HDD65', 'WS
 recsUsage <- c('KWHSPH', 'KWHCOL', 'KWHWTH', 'KWHCOK', 'BTUEL', 'BTUELSPH', 'BTUELCOL', 'BTUELWTH', 'BTUELCOK', 'DOLLAREL', 'CUFEETNGSPH', 'CUFEETNGWTH', 'CUFEETNGCOK', 'BTUNG', 'DOLLARNG', 'GALLONLP', 'GALLONLPSPH', 'GALLONLPWTH', 'GALLONLPCOK', 'BTULP', 'BTULPSPH', 'BTULPWTH', 'BTULPCOK', 'DOLLARLP', 'GALLONFO', 'GALLONFOSPH', 'GALLONFOWTH', 'GALLONFONEC', 'BTUFO', 'DOLLARFO', 'TOTALBTU', 'TOTALDOL', 'TOTALBTUSPH', 'TOTALDOLSPH', 'TOTALBTUWTH', 'TOTALDOLWTH', 'TOTALBTUCOK', 'TOTALDOLCOK', 'WOODAMT', 'ZWOODAMT')
 ```
 
-_Re-creating Min Space Heating_
-Discrepancies / [Musings]:
+_Space Heating_
+__Re-creating Min et al.__
+___Discrepancies / [Musings]:___
 - year_built [Why no var for after 70s? - RECS has up 10 year intervals up to 2015]
 - division [May need to be re-worked for mountain south]
 - fuelheat missing solar [Not an option on this year of RECS data] and electric [filtered out]
 - urban/rural [Unsure what they did with urban clusters. I have tentatively coded them as cities]
 - did not include price of electricity for homes using electric heating equip
 - concrete slab does not seem to be a variable on this data year
-- [some factor variables are used to represent continuous variables - did they leave as integers and use a continuous predictors or recode as factors?]
 - [whether or not householder is black doesn't seem as relevant in our states]
+- [unsure what to do about ordinal categorical variables - there are merits to treating them as either numeric or factor. I think Min left them as numeric based on the fact that they later squared some of them]
 ```{r}
 #Checking Distribution of Outcome Variable
 ggplot(data = minSHrecs) + geom_histogram(aes(x = TOTALBTUSPH))
@@ -81,11 +84,10 @@ ggplot(data = minSHrecs) + geom_histogram(aes(x = TOTALBTUSPH))
 minSH <- c('HEATHOME', 'NWEIGHT', 'HHAGE', 'YEARMADERANGE', 'TOTSQFT_EN', 'HDD65', 'MONEYPY', 'TYPEHUQ', 'TEMPHOME', 'TEMPGONE', 'DIVISION', 'EQUIPAGE', 'FUELHEAT', 'WALLTYPE', 'UATYP10',  'WINDOWS', 'HOUSEHOLDER_RACE')
 
 #Select columns of interest, filter out homes electrically heated
-minSHrecs <- dplyr::select(recs15, c(minSH, recsUsage, recsBrrCol)) %>%
-  filter(FUELHEAT != 5) %>%
-  filter(HEATHOME == 1)
+minSHrecs <- dplyr::select(recs15, c(minSH, recsUsage, recsBrrCol))
 
 #Converting categorical variables to dummy vars
+minSHrecs$heathomeYN <- as.factor(ifelse(minSHrecs$HEATHOME == 1, 1, 0))
 minSHrecs$multifamYN <- as.factor(ifelse(minSHrecs$TYPEHUQ == 5, 1, 0))
 minSHrecs$yearmade40 <- as.factor(ifelse(minSHrecs$YEARMADERANGE == 1, 1, 0))
 minSHrecs$yearmade50 <- as.factor(ifelse(minSHrecs$YEARMADERANGE == 2, 1, 0))
@@ -95,6 +97,7 @@ minSHrecs$divisionENC <- as.factor(ifelse(minSHrecs$DIVISION == 3, 1, 0))
 minSHrecs$divisionWNC <- as.factor(ifelse(minSHrecs$DIVISION == 4, 1, 0))
 minSHrecs$fuelheatOil <- as.factor(ifelse(minSHrecs$FUELHEAT == 3, 1, 0))
 minSHrecs$fuelheatWood <- as.factor(ifelse(minSHrecs$FUELHEAT == 7, 1, 0))
+minSHrecs$fuelheatElec <- as.factor(ifelse(minSHrecs$FUELHEAT == 5, 1, 0))
 minSHrecs$fuelheatOther <- as.factor(ifelse(minSHrecs$FUELHEAT == 21, 1, 0))
 minSHrecs$walltypeBrick <- as.factor(ifelse(minSHrecs$WALLTYPE == 1, 1, 0))
 minSHrecs$walltypeWood <- as.factor(ifelse(minSHrecs$WALLTYPE == 2, 1, 0))
@@ -105,10 +108,16 @@ minSHrecs$blackYN <- as.factor(ifelse(minSHrecs$HOUSEHOLDER_RACE == 2, 1, 0))
 minSHrecs$hddSq <- minSHrecs$HDD65^2
 minSHrecs$equipageSq <- minSHrecs$EQUIPAGE^2
 
+#Converting variables to factors
+#minSHrecs$MONEYPY <- as.ordered(minSHrecs$MONEYPY)
+#minSHrecs$EQUIPAGE <- as.ordered(minSHrecs$EQUIPAGE)
+#minSHrecs$WINDOWS <- as.ordered(minSHrecs$WINDOWS)
+#minSHrecs$TYPEHUQ <- as.ordered(minSHrecs$TYPEHUQ)
+
 #Generating ln for response variable due to skewness
 minSHrecs$logKWH <- log(minSHrecs$KWHSPH)
 
-ggplot(data = minSHrecs) + geom_histogram(aes(x = log(TOTALBTUSPH)))
+ggplot(data = minSHrecs) + geom_histogram(aes(x = log(TOTALBTUSPH+.00001)))
 ```
 
 ```{r - Assign weights}
@@ -120,12 +129,12 @@ Unsure how to treat zeroes. They do not let the model converge. I have added a s
 ```{r - Regression}
 minSHdes <- svrepdesign(weights = minSHweights, repweights = minSHbrr, type = 'Fay', rho = 0.5, mse = TRUE, data = minSHrecs) #Fay is resampling method, Rho is shrinkage factor for weights
 
-minSHmodel <- svyglm(formula = log(TOTALBTUSPH+.00001) ~ HHAGE + yearmade40 + yearmade50 + yearmade60 + yearmade70 + TOTSQFT_EN + HDD65 + hddSq + MONEYPY + multifamYN + TEMPHOME + TEMPGONE + divisionWNC + divisionENC + equipageSq + fuelheatOil + fuelheatWood + fuelheatOther + walltypeBrick + walltypeWood + urbanYN + blackYN + WINDOWS, design = minSHdes, family = 'gaussian')
+minSHmodel <- svyglm(formula = log(TOTALBTUSPH+.00001) ~ heathomeYN + HHAGE + yearmade40 + yearmade50 + yearmade60 + yearmade70 + TOTSQFT_EN + HDD65 + hddSq + MONEYPY + multifamYN + TEMPHOME + TEMPGONE + divisionWNC + divisionENC + equipageSq + fuelheatOil + fuelheatWood + fuelheatElec + fuelheatOther + walltypeBrick + walltypeWood + urbanYN + blackYN + WINDOWS, design = minSHdes, family = 'gaussian')
 
-minSHmodel
+R2 <- with(summary(minSHmodel), 1 - deviance/null.deviance)
+print(paste0('R2:',R2))
+summary(minSHmodel)
 ```
-
-Note that the AIC is huge, indicating this is not a particularly good fit for our data.
 
 _Re-creating Min Water Heating_
 The following discrepancies between our regressions and those of Min et al. presently exist:
