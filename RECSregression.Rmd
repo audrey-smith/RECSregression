@@ -1,7 +1,7 @@
 ---
 title: "Energy Equity Residential Energy Consumption"
 author: "Audrey Smith"
-date: "4/29/2020"
+date: 5/8/2020"
 output: html_document
 ---
 
@@ -26,6 +26,8 @@ _Reading in and Prepping Data_
 Reading in 2015 RECS data along with accompanying data library. 
 Library contains explanations of each variable, universe of responses, imputation codes, etc. Note that data library is incomplete here as it is not formatted in a .csv-friendly way. It is best viewed in the .xlsx file attached to the repo.
 For a quick tutorial on how to work with this data set and the Survey package, see the read me document included in the Git Hub repo.
+
+- Who pays for electricity (ELPAY), natural gas (NGPAY), liquid propane/gas (LPGPAY), fuel oil (FOPAY) (1 household, 2 landlord, 3 shared, 9 other, -2 NA [no -2 for ELPAY])
 ```{r}
 recs15 <- read.csv('RECS/recs2015_public_v4.csv')
 #recs09 <- read.csv('RECS/recs2009_public.csv')
@@ -113,12 +115,6 @@ __Outcomes___
 ### NOTE:
 If we can't get strong enough model fit with ACS alone, the AHS looks promising and contains many variables also contained in RECS. I would need to read up a bit on methodologies for combining data from more than one survey but this would potentially improve fit and eliminate need for sub-regressions for independent variables. Contains vars such as floors in unit, foundation type, cookstove use, solar panels, etc. Geography goes down to Census Tract level.
 
-## ALSO NOTE:
-To re-run prioritizing inclusion of categories where variety exists within our states, as well as with a stratified sample of just Mountain/Mountain South.
-```{r}
-recs15[1:5, 740:820]
-```
-
 #For use in model selection - just sub in appropriate response variable
 fullModel <- svyglm(formula = log(BTUNGSPH+.00001) ~ ELWARM + CLIMATE_COLD + CLIMATE_MARINE + CLIMATE_HOTHUMID + CLIMATE_MIXHUMID + IECC_CLIMATE_PUB_12A + IECC_CLIMATE_PUB_6AB + IECC_CLIMATE_PUB_78 + HDD65 + DIVISION_1 + DIVISION_2 + DIVISION_3 + DIVISION_4 + DIVISION_5 + DIVISION_6 + DIVISION_7 + DIVISION_8 + DIVISION_10 + UATYP10_U + UATYP10_C+ TYPEHUQ + YEARMADERANGE + TOTROOMS + HOUSEHOLDER_RACE_2 + HOUSEHOLDER_RACE_3 + HOUSEHOLDER_RACE_4 + HOUSEHOLDER_RACE_5 + HOUSEHOLDER_RACE_7 + SDESCENT + HHSEX_2 + EMPLOYHH + EDUCATION + MONEYPY + KOWNRENT_1 + ELPAY_1, design = recsDes, family = 'gaussian')
 
@@ -132,7 +128,7 @@ Variables to test as nominal, ordinal, or numeric: TYPEHUQ (preliminary test ind
 
 acsModel_heatNG <- svyglm(formula = log(BTUNGSPH+.00001) ~ UGWARM + CLIMATE_COLD + CLIMATE_MARINE + CLIMATE_HOTHUMID + CLIMATE_MIXHUMID + IECC_CLIMATE_PUB_6AB + IECC_CLIMATE_PUB_78 + HDD65 + UATYP10_U + UATYP10_C+ TYPEHUQ + YEARMADERANGE + TOTROOMS + NGPAY_1, design = recsDes, family = 'gaussian')
 
-R2 <- with(summary(acsModel_heatNG), 1 - deviance/null.deviance)
+R2_heatNG <- with(summary(acsModel_heatNG), 1 - deviance/null.deviance)
 print(paste('R2:', R2, sep = ' '))
 summary(acsModel_heatNG)
 acsModel_heatNG
@@ -140,20 +136,65 @@ acsModel_heatNG
 
 ```{r}
 #Space heating - propane/LPG
+acsModel_heatLPG <- svyglm(formula = log(BTULPSPH+.00001) ~ WDWARM + CLIMATE_MARINE + IECC_CLIMATE_PUB_78 + HDD65 + UATYP10_U + UATYP10_C+ TYPEHUQ + YEARMADERANGE + TOTROOMS + LPGPAY_1, design = recsDes, family = 'gaussian')
 
+R2_heatLPG <- with(summary(acsModel_heatLPG), 1-deviance/null.deviance)
+print(paste('R2:', R2_heatLPG, sep = ' '))
+summary(acsModel_heatLPG)
+acsModel_heatLPG
 ```
 
 ```{r}
 #Space heating - fuel oil/kerosene
+acsModel_heatFO <- svyglm(formula = log(BTUFOSPH+.00001) ~ FOWARM + CLIMATE_COLD + CLIMATE_MARINE + CLIMATE_MIXHUMID + IECC_CLIMATE_PUB_12A + IECC_CLIMATE_PUB_78 + HDD65 + UATYP10_U + TYPEHUQ + YEARMADERANGE + TOTROOMS + HOUSEHOLDER_RACE_7 + SDESCENT + FOPAY_1, design = recsDes, family = 'gaussian')
 
+R2_heatFO <- with(summary(acsModel_heatFO), 1-deviance/null.deviance)
+print(paste('R2:', R2_heatFO, sep = ' '))
+summary(acsModel_heatFO)
+acsModel_heatFO
 ```
 
+Wood is a very poor fit and we do not have the same variables we have for others. Due to the outcome variables available, need to re-work into one regression for all wood use.
 ```{r}
 #Space heating - wood
+acsModel_heatWood <- svyglm(formula = log(WOODBTU + .00001) ~ ELWARM + CLIMATE_COLD + CLIMATE_MARINE + CLIMATE_HOTHUMID + CLIMATE_MIXHUMID + IECC_CLIMATE_PUB_12A + IECC_CLIMATE_PUB_6AB + IECC_CLIMATE_PUB_78 + HDD65 + UATYP10_U + UATYP10_C+ TYPEHUQ + YEARMADERANGE + TOTROOMS + HOUSEHOLDER_RACE_2 + HOUSEHOLDER_RACE_3 + HOUSEHOLDER_RACE_4 + HOUSEHOLDER_RACE_5 + HOUSEHOLDER_RACE_7 + SDESCENT + HHSEX_2 + EMPLOYHH + EDUCATION + MONEYPY + KOWNRENT_1, design = recsDes, family = 'gaussian')
+
+R2_heatWood <- with(summary(acsModel_heatWood), 1-deviance/null.deviance)
+print(paste('R2: ', R2_heatWood))
+summary(acsModel_heatWood)
+acsModel_heatWood
+```
+
+__General Space Heating__
+```{r}
+acsModel_sphTot <- svyglm(formula = log(TOTALBTUSPH + .00001) ~ HEATHOME + CLIMATE_COLD + CLIMATE_HOTHUMID + CLIMATE_MIXHUMID + IECC_CLIMATE_PUB_12A + IECC_CLIMATE_PUB_6AB + HDD65 + UATYP10_U + UATYP10_C+ TYPEHUQ + YEARMADERANGE + TOTROOMS + HOUSEHOLDER_RACE_2 + HOUSEHOLDER_RACE_7 + MONEYPY, design = recsDes, family = 'gaussian')
+
+R2_sphTot <- with(summary(acsModel_sphTot), 1-deviance/null.deviance)
+print(paste('R2:', R2_sphTot, sep = ' '))
+summary(acsModel_sphTot)
+acsModel_sphTot
+```
+
+_Validating Data_
+https://www.eia.gov/state/data.php?sid=CO#EnergyIndicators
+CO: ~343 trillion BTU for residential uses in 2017
+- 69% home heating NG, 23.2% elec, 4.7% LG, 3.0% none/other, 0.1% fuel oil
+
+https://www.eia.gov/state/data.php?sid=NV#ConsumptionExpenditures
+NV: ~165 trillion BTU for residential uses in 2017
+- 57.3% home heating NG, 36.9% elec, 3.0% other/none, 2.3% LG, 0.5% fuel oil
+
+https://www.eia.gov/state/data.php?sid=NM
+NM: ~112 trillion BTU for residential use in 2017
+- 63.1% home heating NG, 20.9% elec, 8.6% other/none, 7.2% LG, 0.1% fuel oil
+
+```{r}
 
 ```
 
 _Re-Creating Min et al._
+This section is just saved for reference. Was used to get familiarized with methods, the survey package, the RECS data, etc.
+
 __Space Heating__
 ___Discrepancies / [Musings]:___
 - year_built [Why no var for after 70s? - RECS has up 10 year intervals up to 2015]
@@ -208,7 +249,6 @@ print(paste('R2:', R2WH, sep = ' '))
 summary(minWHmodel)
 minWHmodel
 ```
-
 
 
 
