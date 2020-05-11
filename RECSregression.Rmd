@@ -20,6 +20,7 @@ Survey documentation, including useful example can be found with command ??surve
 library(tidyverse)
 library(survey)
 library(fastDummies)
+library(sf)
 ```
 
 _Reading in and Prepping Data_
@@ -116,7 +117,11 @@ __Outcomes___
 If we can't get strong enough model fit with ACS alone, the AHS looks promising and contains many variables also contained in RECS. I would need to read up a bit on methodologies for combining data from more than one survey but this would potentially improve fit and eliminate need for sub-regressions for independent variables. Contains vars such as floors in unit, foundation type, cookstove use, solar panels, etc. Geography goes down to Census Tract level.
 
 #For use in model selection - just sub in appropriate response variable
+-This one has everything
 fullModel <- svyglm(formula = log(BTUNGSPH+.00001) ~ ELWARM + CLIMATE_COLD + CLIMATE_MARINE + CLIMATE_HOTHUMID + CLIMATE_MIXHUMID + IECC_CLIMATE_PUB_12A + IECC_CLIMATE_PUB_6AB + IECC_CLIMATE_PUB_78 + HDD65 + DIVISION_1 + DIVISION_2 + DIVISION_3 + DIVISION_4 + DIVISION_5 + DIVISION_6 + DIVISION_7 + DIVISION_8 + DIVISION_10 + UATYP10_U + UATYP10_C+ TYPEHUQ + YEARMADERANGE + TOTROOMS + HOUSEHOLDER_RACE_2 + HOUSEHOLDER_RACE_3 + HOUSEHOLDER_RACE_4 + HOUSEHOLDER_RACE_5 + HOUSEHOLDER_RACE_7 + SDESCENT + HHSEX_2 + EMPLOYHH + EDUCATION + MONEYPY + KOWNRENT_1 + ELPAY_1, design = recsDes, family = 'gaussian')
+
+-This one doesn't have division and removes redundancies in climate data
+fullModel <- svyglm(formula = log(BTUNGSPH+.00001) ~ ELWARM + CLIMATE_COLD + CLIMATE_MARINE + CLIMATE_HOTHUMID + CLIMATE_MIXHUMID + UATYP10_U + UATYP10_C+ TYPEHUQ + YEARMADERANGE + TOTROOMS + HOUSEHOLDER_RACE_2 + HOUSEHOLDER_RACE_3 + HOUSEHOLDER_RACE_4 + HOUSEHOLDER_RACE_5 + HOUSEHOLDER_RACE_7 + SDESCENT + HHSEX_2 + EMPLOYHH + EDUCATION + MONEYPY + KOWNRENT_1 + ELPAY_1, design = recsDes, family = 'gaussian')
 
 __Space Heating by Fuel Type__
 Reference groups in dummy vars: DIVISION_9 (Mountain South), UATYP10_R (rural areas), HOUSEHOLDER_RACE_1 (white only [also 6/other missing from dummy var?]), HHSEX_2 (male), KOWNRENT_1 (owner occupied), ELPAY_1 (respondent pays electric), CLIMATE_HOTDRY (marine climate zone - unsure what to use here since our study area isn't all within one climate zone), IECC_CLIMATE_PUB_3A (similar to hot/dry in other climate var)
@@ -189,7 +194,9 @@ NM: ~112 trillion BTU for residential use in 2017
 - 63.1% home heating NG, 20.9% elec, 8.6% other/none, 7.2% LG, 0.1% fuel oil
 
 ```{r}
-
+tractData <- read_sf('spatial/acsBuildAm_join.shp') %>%
+  as.data.frame() %>%
+  rename('popTot'='EstimatesT', 'white'='EstimatesW', 'black'='EstimatesB', 'amInd'='EstimatesA', 'asian'='Estimate_1', 'hiPI'='EstimatesN', 'other'='EstimatesS', 'multi'='EstimatesM', 'medIncome'='EstimatesM', 'unitsTot'='Estimates_3', 'unitsOccupied'='EstimatesO', 'unitsVacant'='EstimatesV', 'rooms1'='Estimates1', 'rooms2'='Estimates2', 'rooms3'='Estimates3', 'rooms4'='Estimates4', 'rooms5'='Estimates5', 'rooms6'='Estimates6', 'rooms7'='Estimates7', 'rooms8'='Estimates8', 'rooms9plus'='Estimates9')
 ```
 
 _Re-Creating Min et al._
