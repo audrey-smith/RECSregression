@@ -1,0 +1,47 @@
+___Geo___
+- Census region (REGIONC: 1 Northeast, 2 Midwest, 3 South, 4 West)
+- Census division (DIVISION: 1 New Eng, 2 Mid Atlantic, 3 E N Central, 4 W N Central, 5 South Atlantic, 6 E S CEntral 7 W S Central, 8 Mtn N, 9 Mtn S, 10 Pacific)
+- Urban or rural (UATYP10: U Urban, C Urban Cluster, R Rural)
+- Building America climate zone (CLIMATE_REGION_PUB: Cold/Very Cold, Hot-Dry/Mixed-Dry, Hot-Humid, Mixed-Humid, Marine)
+- IECC climate zone (IECC_CLIMATE_PUB: 1A-2A, 2B, 3A, 3B-4B, 3C, 4A, 4C, 5A, 5B-5C, 6A-6B, 7A-7B-7AK-8AK)
+- # heating degree days base 65 (HDD65), cooling degree days (CDD65)
+
+___Building___
+- # housing units in building (TYPEHUQ: 1 mobile home, 2 single family detached, 3 single family attached, 4 apt 2-4 units, 5 apt 5+ units)
+- Owner or renter occupied unit (KOWNRENT: 1 owner occupied, 2 renter occupied, 3 occuppied wo rent [squatter occupied??])
+- Year housing built (YEARMADERANGE: 1 before 1950, 2 50s, 3 60s, 4 70s, 5 80s, 6 90s, 7 00s, 8 2010-2015)
+- # bedrooms in housing unit (BEDROOMS: #0-30), # full bathrooms in housing unit (NCOMBATH: #0-30), # rooms in housing unit other than bathrooms (TOTROOMS: #0-60)
+- Internet access at home (INTERNET: 1 Yes, 0 No)
+- # computers at home (DESKTOP: #0-30, LAPTOP: #0-30)
+
+___Demo___
+- Householder race (HOUSEHOLDER_RACE: 1 white, 2 black, 3 Native American, 4 Asian, 5 Pacific Islander, 6 other, 7 multi), 
+- Householder ethnicity (SDESCENT: 1 HL, 0 not HL) 
+- Householder sex (HHSEX: 1 female, 2 male)
+- Householder age (HHAGE: #18-110)
+- Householder employment status (EMPLOYHH: 1 fulltime, 2 parttime, 3 unemployed or retired)
+- Householder education level (EDUCATION: 1 less HS, 2 HS, 3 some college or associates, 4 BA/BS, 5 post-grad)
+- Household income (MONEYPY: 1 <20K, 2 20-39K, 3 40-59K, 4 60-79K, 5 80-99K, 6 100-119K, 7 120-139K, 8 >140K)
+- # adults in household (NUMADULT: #1-20), # children in household (NUMCHILD: #1-20), # people in household (NSHLDMEM: #1-20)
+- # weekdays someone home (ATHOME: #0-5) - (weak?) proxy would be telecommute in ACS
+
+___Util___
+- Who pays for electricity (ELPAY), natural gas (NGPAY), liquid propane/gas (LPGPAY), fuel oil (FOPAY) (1 household, 2 landlord, 3 shared, 9 other, -2 NA [no -2 for ELPAY])
+- Unit heated (HEATHOME: 1 Yes, 0 No) - equivalent in ACS is the heating fuel variable, for which there is one category for "no fuel used" 
+- What fuel is used for space heating (FUELHEAT: 1 natural gas, 2 propane, 3 fuel oil/kerosene, 5 electricity, 7 wood, 21 other, -2 NA)
+- Can code proxy variable for presence of complete kitchen facilities by combinining some of the more specific kitchen vars (ex: FULLKITCHEN = ifelse(STOVE > 1 & OVEN > 1, 1, 0))
+Only space heating portion available in ACS:
+- Electricity used (USELE) for space heating (ELWARM), water heating (ELWATER), cooking (ELFOOD) (1 yes, 0 no)
+- Natural gas used (USENG) for space heating (UGWARM), water heating (UGWATER), cooking (UGCOOK), other purposes (UGOTH) (1 yes, 0 no)
+- Fuel oil used (USEFO) for space heating (FOWARM), water heating (FOWATER), other purposes (FOOTHER) (1 yes, 0 no)
+- Liquid propane used (USELP) for space heating (LPWARM), water heating (LPWATER), cooking (LPCOOK), other purposes (LPOTHER) (1 yes, 0 no)
+- Wood used (USEWOOD) for space heating (WDWARM), water heating (WDWATER), other purposes (WDOTHER) (1 yes, 0 no)
+- Solar used (USESOLAR) for water heating (SOLWATER), other purposes (SOLOTHER) (1 yes, 0 no)
+
+__Outcomes___
+- Natural Gas: total (CUFEETNG, BTUNG), space heating (CUFEETNGSPH, BTUNGSPH), water heating (CUFEETNGWTH, BTUNGWTH), cooking (CUFEETNGCOK, BTUNGCOK)
+- Electricity: total (KWH, BTUEL), space heating (KWHSPH, BTUELSPH), AC (KWHCOL, BTUELCOL), water heating (KWHWTH, BTUELWTH), kitchen contains vars for many appliances
+- Propane: total (GALLONLP, BTULP) space heating (GALLONLPSPH, BTULPSPH), waterheating (GALLONLPWTH, BTULPWTH), cooking (GALLONLPCOK, BTULPCOK)
+- Fuel oil: total (GALLONFO, BTUFO), space heating (GALLONFOSPH, BTUFOSPH), water heating (GALLONFOWTH, BTUFOWTH)
+- Wood: total cords (WOODAMT), total BTU (WOODBTU)
+- If needed for validation, there are variables detailing the cost of each of these other variables
