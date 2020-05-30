@@ -25,13 +25,15 @@ options(scipen=999)
 Note - there's a big mismatch between what I've hand-calculated as electricity and NG price based on the RECS data and the prices downloaded from the EIA site. I'm fairly certain they are the same units - so unsure what the source of the discrepancy is.
 ```{r - Read RECS data and set study design}
 #Reading in RECS data
-recs15 <- read.csv('RECS/recs2015_clean.csv')
+recs15 <- read.csv('RECS/recs2015_mountain_clean.csv')
+recs15_usa <- read.csv('RECS/recs2015_public_clean.csv')
 
 #Calculate energy prices
 recs15$PRNG <- 10*recs15$DOLLARNG/recs15$CUFEETNG #EIA price is per 1,000 cu ft, this is in 100 cu ft
 recs15$PREL <- 100*recs15$DOLLAREL/recs15$KWH #100 is arbitrary and from visually inspecting the data - need to inspect discrepancy
 recs15$PRLPG <- recs15$DOLLARLP/recs15$GALLONLP
 recs15$PRFO <- recs15$DOLLARFO/recs15$GALLONFO
+summary(recs15$PRLPG)
 
 #Generating weight and rep weights
 recsWeights <- recs15$NWEIGHT
@@ -51,12 +53,13 @@ generateDes <- function(recs15FUEL){
 recsDes <- svrepdesign(weights = recsWeights, repweights = recsBrr, type = 'Fay', rho = .5, mse = TRUE, data = recs15) 
 recsDes_EL <- generateDes(recs15$KWH)
 recsDes_NG <- generateDes(recs15$CUFEETNG)
+#recsDes_FO <- generateDes_USA(recs15$GALLONFO)
 recsDes_LPG <- generateDes(recs15$GALLONLP)
-#recsDes_FO <- generateDes(recs15$GALLONFO)
+recsDes_WD <- generateDes(recs15$WOODAMT)
 ```
 
 ```{r - Read in ACS Data}
-tractPreds <- read.csv('predictors/ACSclimate_clean.csv') %>% dplyr::select(-X)
+tractPreds <- read.csv('predictors/ACSclimate_clean.csv') %>% dplyr::select(-c(X, MONEYPY, YEARMADERANGE)) %>% filter(TOTALPOP != 0) %>% filter(TOTALHH != 0)
 tractGeom <- read_sf('predictors/ACS_climateZones_int.shp') %>% dplyr::select(GISJOIN, geometry)
 
 #Need to figure out why so many NAs
@@ -109,8 +112,10 @@ elecLog_MSE <- c(crossprod(elecLog$residuals))/length(elecLog$residuals)
 
 #Predict
 predict_elecLog <- as.data.frame(predict(object = elecLog, newdata = tractPreds, type = 'response', na.action = na.include))
-predict_elecLog$BTUelec <- 1000*exp(predict_elecLog$response)
+predict_elecLog$BTUelec <- 1000*exp(elecLog_MSE/2)*exp(predict_elecLog$response)
+```
 
+```{r}
 ### NATURAL GAS ###
 #Full
 ngLog_full <- svyglm(log(BTUNG+.0000000001) ~ DIVISION_8 + CLIMATE_HOTDRY + FUELHEAT_1 + FUELHEAT_2 + FUELHEAT_5 + FUELHEAT_7 + PRNG + HDD65 + CDD65 + HHAGE + HHSEX_1 + log(NHSLDMEM) + NUMCHILD + EMPLOYHH_12 + SDESCENT_1 + MONEYPY_2 + MONEYPY_3 + MONEYPY_45 + MONEYPY_678 + TOTROOMS + TOTROOMSSQ + YEARMADERANGE_2 + YEARMADERANGE_3 + YEARMADERANGE_4 + YEARMADERANGE_5 + YEARMADERANGE_6 + YEARMADERANGE_7 + YEARMADERANGE_8+ TYPEHUQ_1 + TYPEHUQ_3 + TYPEHUQ_4 + TYPEHUQ_5 + HOUSEHOLDER_RACE_2 + HOUSEHOLDER_RACE_3 + HOUSEHOLDER_RACE_4 + HOUSEHOLDER_RACE_5 + ELPAY_1, family = gaussian(identity), design = recsDes_NG)
@@ -121,8 +126,10 @@ ngLog_MSE <- c(crossprod(ngLog$residuals))/length(ngLog$residuals)
 
 #Predict
 predict_ngLog <- as.data.frame(predict(object = ngLog, newdata = tractPreds, type = 'response', na.action = na.exclude))
-predict_ngLog$BTUng <- 1000*exp(predict_ngLog$response)
+predict_ngLog$BTUng <- 1000*exp(ngLog_MSE/2)*exp(predict_ngLog$response)
+```
 
+```{r}
 ### LIQUID PROPANE GAS ###
 #Full
 lpgLog_full <- svyglm(log(BTULP+.0000000001) ~ DIVISION_8 + CLIMATE_HOTDRY + FUELHEAT_1 + FUELHEAT_2 + FUELHEAT_5 + FUELHEAT_7 + HDD65 + CDD65 + HHAGE + HHSEX_1 + log(NHSLDMEM) + NUMCHILD + EMPLOYHH_12 + SDESCENT_1 + MONEYPY_2 + MONEYPY_3 + MONEYPY_45 + MONEYPY_678 + HOUSEHOLDER_RACE_2 + HOUSEHOLDER_RACE_3 + HOUSEHOLDER_RACE_4 + HOUSEHOLDER_RACE_5 + HOUSEHOLDER_RACE_7 + TOTROOMS + TOTROOMSSQ + YEARMADERANGE_2 + YEARMADERANGE_3 + YEARMADERANGE_4 + YEARMADERANGE_5 + YEARMADERANGE_6 + YEARMADERANGE_7 + YEARMADERANGE_8 + TYPEHUQ_1 + TYPEHUQ_3 + TYPEHUQ_4 + TYPEHUQ_5 + ELPAY_1 + HEATHOME, family = gaussian(identity), design = recsDes)
@@ -134,7 +141,9 @@ lpgLog_MSE <- c(crossprod(lpgLog$residuals))/length(lpgLog$residuals)
 #Predict
 predict_lpgLog <- as.data.frame(predict(object = lpgLog, newdata = tractPreds, type = 'response', na.action = na.exclude))
 predict_lpgLog$BTUlpg <- 1000*exp(predict_lpgLog$response)
+```
 
+```{r}
 ### FUEL OIL ###
 #Full
 foLog_full <- svyglm(log(BTUFO+.0000000001) ~ DIVISION_8 + CLIMATE_HOTDRY + FUELHEAT_1 + FUELHEAT_2 + FUELHEAT_5 + FUELHEAT_7 + HDD65 + CDD65 + HHAGE + HHSEX_1 + log(NHSLDMEM) + NUMCHILD + EMPLOYHH_12 + SDESCENT_1 + MONEYPY_2 + MONEYPY_3 + MONEYPY_45 + MONEYPY_678 + HOUSEHOLDER_RACE_2 + HOUSEHOLDER_RACE_3 + HOUSEHOLDER_RACE_4 + HOUSEHOLDER_RACE_5 + HOUSEHOLDER_RACE_7 + TOTROOMS + TOTROOMSSQ + YEARMADERANGE_2 + YEARMADERANGE_3 + YEARMADERANGE_4 + YEARMADERANGE_5 + YEARMADERANGE_6 + YEARMADERANGE_7 + YEARMADERANGE_8 + TYPEHUQ_1 + TYPEHUQ_3 + TYPEHUQ_4 + TYPEHUQ_5 + ELPAY_1 + HEATHOME, family = gaussian(identity), design = recsDes)
@@ -146,7 +155,9 @@ foLog_MSE <- c(crossprod(foLog$residuals))/length(foLog$residuals)
 #Predict
 predict_foLog <- as.data.frame(predict(object = foLog, newdata = tractPreds, type = 'response', na.action = na.exclude))
 predict_foLog$BTUfo <- 1000*exp(predict_foLog$response)
+```
 
+```{r}
 ### WOOD ###
 #Full
 woodLog_full <- svyglm(log(WOODBTU+.0000000001) ~ DIVISION_8 + CLIMATE_HOTDRY + FUELHEAT_1 + FUELHEAT_2 + FUELHEAT_5 + FUELHEAT_7 + HDD65 + CDD65 + HHAGE + HHSEX_1 + log(NHSLDMEM) + NUMCHILD + EMPLOYHH_12 + SDESCENT_1 + MONEYPY_2 + MONEYPY_3 + MONEYPY_45 + MONEYPY_678 + HOUSEHOLDER_RACE_2 + HOUSEHOLDER_RACE_3 + HOUSEHOLDER_RACE_4 + HOUSEHOLDER_RACE_5 + HOUSEHOLDER_RACE_7 + TOTROOMS + TOTROOMSSQ + YEARMADERANGE_2 + YEARMADERANGE_3 + YEARMADERANGE_4 + YEARMADERANGE_5 + YEARMADERANGE_6 + YEARMADERANGE_7 + YEARMADERANGE_8 + TYPEHUQ_1 + TYPEHUQ_3 + TYPEHUQ_4 + TYPEHUQ_5 + ELPAY_1 + HEATHOME, family = gaussian(identity), design = recsDes)
@@ -166,19 +177,37 @@ predict_allLog <- as.data.frame(cbind(tractPreds[,c(1, 14, 19, 18)], predict_ele
 predict_allLog <- predict_allLog[, c(1:4, 7, 10, 13, 16, 19)]
 expected <- c(343000000000000, 165000000000000, 112000000000000)
 
+#Check Against EIA
 predict_allLog %>%
-  mutate_at(.vars = c('BTUelec', 'BTUng', 'BTUlpg', 'BTUfo', 'BTUwood'), .funs = function(x){x*predict_allLog$TOTALHH}) #%>%
-  #write.csv('output/output_May29_byHH.csv')
-
-predict_allLog %>%
-  mutate(BTUtract = TOTALPOP*(BTUelec + BTUng + BTUlpg + BTUfo + BTUwood)) %>%
+  mutate(BTUelec = BTUelec*TOTALHH, BTUng = BTUng*TOTALHH, BTUlpg = BTUlpg*TOTALHH, BTUfo = BTUfo*TOTALHH, BTUwood = BTUwood*TOTALHH) %>%
+  mutate(BTUtract = (BTUelec + BTUng + BTUlpg + BTUfo + BTUwood)) %>%
   group_by(state_code) %>%
-  summarize(BTUstate = sum(BTUtract)) %>%
-  mutate(BTUexpected = expected, propUnder = (BTUexpected-BTUstate)/BTUexpected)
-
-print(paste('R2 elec:', with(summary(elecLog), 1-deviance/null.deviance)))
-print(paste('R2 natural gas:', with(summary(ngLog), 1-deviance/null.deviance)))
-print(paste('R2 liquid propane:', with(summary(lpgLog), 1-deviance/null.deviance)))
-print(paste('R2 fuel oil:', with(summary(foLog), 1-deviance/null.deviance)))
-print(paste('R2 wood:', with(summary(woodLog), 1-deviance/null.deviance)))
+  summarize(stateTotal = sum(BTUtract), stateElec = sum(BTUelec), stateNG = sum(BTUng), stateLPG = sum(BTUlpg), stateFO = sum(BTUfo), stateWd = sum(BTUwood)) %>%
+  mutate(stateExpected = expected, propUnder = (stateExpected-stateTotal)/stateExpected)
 ```
+
+```{r}
+predict_allLog %>%
+  filter(state_code == 35) %>%
+  summarize(kWh = mean(BTUelec/3412), cf = mean(BTUng/1015), gallonLPG = mean(BTUlpg/91,502))
+```
+
+```{r}
+predict_allLog %>%
+  mutate(BTUelec_scaleHH = BTUelec*TOTALHH, BTUng_scaleHH = BTUng*TOTALHH, BTUlpg_scaleHH = BTUlpg*TOTALHH, BTUfo_scaleHH = BTUfo*TOTALHH, BTUwd_scaleHH = BTUwood*TOTALHH) %>%
+  mutate(BTUelec_scalePop = BTUelec*TOTALPOP, BTUng_scalePop = BTUng*TOTALPOP, BTUlpg_scalePop = BTUlpg*TOTALPOP, BTUfo_scalePop = BTUfo*TOTALPOP, BTUwd_scalePop = BTUwood*TOTALPOP) %>%
+  write.csv('output/output_May29_byPopAndHH.csv')
+```
+
+http://www.swenergy.org/Data/Sites/1/media/documents/publications/factsheets/nv-factsheet.pdf
+https://www.eia.gov/state/data.php?sid=CO#EnergyIndicators
+CO: ~343 trillion BTU for residential uses in 2017
+- 69% home heating NG, 23.2% elec, 4.7% LG, 3.0% none/other, 0.1% fuel oil
+
+https://www.eia.gov/state/data.php?sid=NV#ConsumptionExpenditures
+NV: ~165 trillion BTU for residential uses in 2017
+- 57.3% home heating NG, 36.9% elec, 3.0% other/none, 2.3% LG, 0.5% fuel oil
+
+https://www.eia.gov/state/data.php?sid=NM
+NM: ~112 trillion BTU for residential use in 2017
+- 63.1% home heating NG, 20.9% elec, 8.6% other/none, 7.2% LG, 0.1% fuel oil

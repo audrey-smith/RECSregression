@@ -49,7 +49,7 @@ recs15$MONEYPY_45 <- ifelse(recs15$MONEYPY_4 == 1 | recs15$MONEYPY_5 == 1, 1, 0)
 recs15$MONEYPY_678 <- ifelse(recs15$MONEYPY_6 == 1 | recs15$MONEYPY_7 == 1 | recs15$MONEYPY_8 == 1, 1, 0)
 recs15$EMPLOYHH_12 <- ifelse(recs15$EMPLOYHH_1 == 1 | recs15$EMPLOYHH_2 == 1, 1, 0)
 
-#write.csv(recs15, 'RECS/recs2015_clean.csv')
+write.csv(recs15, 'RECS/recs2015_mountain_clean.csv')
 ```
 
 ```{r - Reading in Predictor Variables from ACS and GIS}
