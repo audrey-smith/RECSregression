@@ -10,5 +10,124 @@ knitr::opts_chunk$set(echo = TRUE)
 ```
 
 ```{r}
+library(ggplot2)
+library(dplyr)
+library(mapview)
+```
+
+```{r}
+predictedVals <- read.csv('output/output_May31.csv')
+predictorVars <- read.csv('predictors/ACSclimate_clean.csv')
+supplementVals <- read.csv('predictors/demographics_tract.csv')
+year <- read.csv('predictors/medYearBuilt.csv') %>% select(GISJoinMatchCode, EstimatesMedianyearstructurebuilt) %>% rename('medYearBuilt' = 'EstimatesMedianyearstructurebuilt', 'GISJOIN'='GISJoinMatchCode')
+
+fittedTracts <- left_join(predictedVals, predictorVars, by = 'GISJOIN') %>% left_join(supplementVals, by = 'GISJOIN') %>% left_join(year, by = 'GISJOIN')
+
+colnames(fittedTracts)
+```
+
+```{r}
+### POPULATION DENSITY
+ggplot(fittedTracts) + geom_point(aes(x = pop_per_sqmi, y = BTUng+BTUelec+BTUwood+BTUlpg, color = state_name.x), alpha = .8) +
+  #geom_smooth(aes(x = pop_per_sqmi, y = BTUng+BTUelec+BTUwood+BTUlpg, color = state_name.x), method = 'lm', se= T, alpha = .5) +
+  scale_color_manual(values = c('darkslategray4', 'orange', 'aquamarine3'), 'State') + 
+  ggtitle('Residential Energy Consumption and Population Density') + 
+  xlab('Census Tract Population per Square Mile') + ylab('Annual Residential Energy Consumption (BTU) \nfor Average Household') +
+  theme(plot.title = element_text(hjust = .5, face = 'bold'), axis.title = element_text(size = 9, face = 'italic'), legend.position = 'bottom')
+```
+
+```{r}
+### MEDIAN HOUSEHOLD INCOME
+subset(fittedTracts, state_name.x == 'New Mexico') %>%
+ggplot() + geom_point(aes(x = median_household_income, y = BTUelec+BTUng+BTUlpg+BTUwood), color = 'aquamarine3', alpha = 1) +
+  geom_smooth(aes(x = median_household_income, y = BTUelec+BTUng+BTUlpg+BTUwood), color = 'aquamarine3', method = 'lm', se = T, alpha = .5) +
+  scale_color_manual(values = c('darkslategray4', 'orange', 'aquamarine3'), 'State') + scale_fill_manual(palette = c('darkslategray4', 'darkorange2', 'aquamarine4'), 'State') +
+  #ggtitle('Income and Residential Energy Consumption') + 
+  xlab('Census Tract Median Household Income') + ylab('Annual Energy Consumption (BTU) \nfor Average Household') +
+  theme(plot.title = element_text(hjust = .5, face = 'bold'), axis.title = element_text(size = 9, face = 'italic'), legend.position = 'bottom')
+```
+
+```{r}
+### MEDIAN HOUSEHOLD INCOME AND PROP ELEC
+subset(fittedTracts, state_name.x == 'New Mexico') %>%
+ggplot() + geom_point(aes(x = median_household_income, y = BTUelec/(BTUelec+BTUng+BTUlpg+BTUwood)), color = 'aquamarine3', alpha = 1) +
+  geom_smooth(aes(x = median_household_income, y = BTUelec/(BTUelec+BTUng+BTUlpg+BTUwood)), color = 'aquamarine3', method = 'lm', se = T, alpha = .5) +
+  #scale_color_manual(values = c('darkslategray4', 'orange', 'aquamarine3'), 'State') + scale_fill_manual(palette = c('darkslategray4', 'darkorange2', 'aquamarine4'), 'State') +
+  #ggtitle('Electric Share of Residential Energy Consumption by Income') + 
+  xlab('Census Tract Median Household Income') + ylab('Proportion of Total Household Energy \n Consumption Comprised of Electric') +
+  theme(plot.title = element_text(hjust = .5, face = 'bold'), axis.title = element_text(size = 9, face = 'italic'), legend.position = 'bottom')
+```
+
+```{r}
+### PROP WHITE AND PROP ELEC
+subset(fittedTracts, medYearBuilt > 1930 & state_name.x == 'New Mexico') %>%
+ggplot() + geom_point(aes(x = 1-(not_HL_white/total_population), y = BTUelec+BTUng+BTUlpg+BTUwood), color = 'aquamarine3', alpha = 1) +
+  geom_smooth(aes(x = 1-(not_HL_white/total_population), y = BTUelec+BTUng+BTUlpg+BTUwood), color = 'aquamarine3', method = 'lm', se = T, alpha = .5) +
+  scale_color_manual(values = c('darkslategray4', 'orange', 'aquamarine3'), 'State') +
+  #ggtitle('Residential Energy Consumption by Proportion Minority') + 
+  xlab('Census Tract Proportion Minority') + ylab('Household Energy Consumption (BTU)') +
+  theme(plot.title = element_text(hjust = .5, face = 'bold'), axis.title = element_text(size = 9, face = 'italic'), legend.position = 'bottom')
+```
+
+```{r}
+subset(fittedTracts, state_name.x == 'New Mexico') %>%
+  mutate(medDecade = paste0(substr(medYearBuilt, 3, 3), '0s')) %>%
+  mutate(medianDecade = ifelse(medDecade == '00s' | medDecade == '10s', paste0('20', medDecade), paste0('19', medDecade))) %>%
+  filter(medianDecade != '190s' & medianDecade != '19NA0s') %>%
+  group_by(medianDecade, state_name.x) %>%
+  summarize(meanBTU = mean(BTUelec+BTUng+BTUlpg+BTUwood), meanBTUelec = mean(BTUelec), meanBTUng = mean(BTUng), meanBTUwood = mean(BTUwood), meanBTUlpg = mean(BTUlpg)) %>%
+  ggplot() + geom_bar(aes(x = medianDecade, y = meanBTU, fill = state_name.x), stat = 'identity', fill = 'aquamarine3') +
+  #scale_fill_manual(values = c('darkslategray4', 'orange', 'aquamarine3'), 'State') +
+  #ggtitle('Housing Stock Age and Propane Consumption') + 
+  xlab('Median Year of Housing Unit Construction') + ylab('Household Energy Consumption (BTU)') +
+  theme(plot.title = element_text(hjust = .5, face = 'bold'), axis.title = element_text(size = 9, face = 'italic'), legend.position = 'bottom')
+
 
 ```
+
+```{r}
+subset(fittedTracts, state_name.x == 'New Mexico') %>%
+  ggplot() + geom_point(aes(x = TOTROOMS, y = BTUelec+BTUng+BTUlpg+BTUwood), color = 'aquamarine3') +
+  geom_smooth(aes(x = TOTROOMS, y = BTUelec+BTUng+BTUlpg+BTUwood), color = 'aquamarine3', se = T, alpha = .5, method = 'lm') +
+  #scale_color_manual(values = c('darkslategray4', 'orange', 'aquamarine3'), 'State') +
+  #ggtitle('Total Rooms in Housing Unit and Energy Consumption') + 
+  xlab('Total Rooms excepting Bathrooms') + ylab('Total Energy Consumption (BTU)') +
+  theme(plot.title = element_text(hjust = .5, face = 'bold'), axis.title = element_text(size = 9, face = 'italic'), legend.position = 'bottom')
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

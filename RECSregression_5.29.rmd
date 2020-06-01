@@ -31,9 +31,8 @@ recs15_usa <- read.csv('RECS/recs2015_public_clean.csv')
 #Calculate energy prices
 recs15$PRNG <- 10*recs15$DOLLARNG/recs15$CUFEETNG #EIA price is per 1,000 cu ft, this is in 100 cu ft
 recs15$PREL <- 100*recs15$DOLLAREL/recs15$KWH #100 is arbitrary and from visually inspecting the data - need to inspect discrepancy
-recs15$PRLPG <- recs15$DOLLARLP/recs15$GALLONLP
-recs15$PRFO <- recs15$DOLLARFO/recs15$GALLONFO
-summary(recs15$PRLPG)
+recs15$PRLPG <- recs15$DOLLARLP/(recs15$BTULP/1000)
+recs15$PRFO <- recs15$DOLLARFO/(recs15$GALLONFO/1000)
 
 #Generating weight and rep weights
 recsWeights <- recs15$NWEIGHT
@@ -54,8 +53,12 @@ recsDes <- svrepdesign(weights = recsWeights, repweights = recsBrr, type = 'Fay'
 recsDes_EL <- generateDes(recs15$KWH)
 recsDes_NG <- generateDes(recs15$CUFEETNG)
 #recsDes_FO <- generateDes_USA(recs15$GALLONFO)
-recsDes_LPG <- generateDes(recs15$GALLONLP)
 recsDes_WD <- generateDes(recs15$WOODAMT)
+
+LPGweights <- subset(recs15, GALLONLP > 0) %>% pull(NWEIGHT)
+colsBrr <- subset(colnames(recs15), grepl('^BRRWT', colnames(recs15)) == T)
+LPGBrr <- filter(recs15, GALLONLP > 0) %>% dplyr::select(colsBrr)
+recsDes_LPG <- svrepdesign(weights = LPGweights, repweights = LPGBrr, type = 'Fay', rho = .5, mse = TRUE, data = subset(recs15, GALLONLP > 0))
 ```
 
 ```{r - Read in ACS Data}
@@ -68,6 +71,8 @@ tractPreds <- drop_na(tractPreds)
 #Add energy prices from EIA
 tractPreds$PRNG <- ifelse(tractPreds$state_code == 8, 7.72, ifelse(tractPreds$state_code == 32, 7.89, 9.24))
 tractPreds$PREL <- ifelse(tractPreds$state_code == 8, 12.04, ifelse(tractPreds$state_code == 32, 12.47, 12.12))
+tractPreds$PRLPG <- ifelse(tractPreds$state_code == 8, 23.03, ifelse(tractPreds$state_code == 32, 29.97, 26.07))
+tractPreds$PRFO <- ifelse(tractPreds$state_code == 8, 17.23, ifelse(tractPreds$state_code == 32, 19.17, 15.51))
 ```
 
 #Plotting Response Variables
@@ -132,7 +137,7 @@ predict_ngLog$BTUng <- 1000*exp(ngLog_MSE/2)*exp(predict_ngLog$response)
 ```{r}
 ### LIQUID PROPANE GAS ###
 #Full
-lpgLog_full <- svyglm(log(BTULP+.0000000001) ~ DIVISION_8 + CLIMATE_HOTDRY + FUELHEAT_1 + FUELHEAT_2 + FUELHEAT_5 + FUELHEAT_7 + HDD65 + CDD65 + HHAGE + HHSEX_1 + log(NHSLDMEM) + NUMCHILD + EMPLOYHH_12 + SDESCENT_1 + MONEYPY_2 + MONEYPY_3 + MONEYPY_45 + MONEYPY_678 + HOUSEHOLDER_RACE_2 + HOUSEHOLDER_RACE_3 + HOUSEHOLDER_RACE_4 + HOUSEHOLDER_RACE_5 + HOUSEHOLDER_RACE_7 + TOTROOMS + TOTROOMSSQ + YEARMADERANGE_2 + YEARMADERANGE_3 + YEARMADERANGE_4 + YEARMADERANGE_5 + YEARMADERANGE_6 + YEARMADERANGE_7 + YEARMADERANGE_8 + TYPEHUQ_1 + TYPEHUQ_3 + TYPEHUQ_4 + TYPEHUQ_5 + ELPAY_1 + HEATHOME, family = gaussian(identity), design = recsDes)
+lpgLog_full <- svyglm(log(BTULP+.0000000001) ~ DIVISION_8 + CLIMATE_HOTDRY + PRLPG + FUELHEAT_1 + FUELHEAT_2 + FUELHEAT_5 + HDD65 + CDD65 + HHAGE + HHSEX_1 + log(NHSLDMEM) + NUMCHILD + EMPLOYHH_12 + SDESCENT_1 + MONEYPY_2 + MONEYPY_3 + MONEYPY_45 + MONEYPY_678 + TOTROOMS + TOTROOMSSQ + YEARMADERANGE_2 + YEARMADERANGE_3 + YEARMADERANGE_4 + YEARMADERANGE_5 + YEARMADERANGE_6 + YEARMADERANGE_7 + TYPEHUQ_1 + HOUSEHOLDER_RACE_3 + HOUSEHOLDER_RACE_4, family = gaussian(identity), design = recsDes_LPG)
 
 #Log
 lpgLog <- stepAIC(object = lpgLog_full, direction = 'backward', trace = F)
@@ -140,7 +145,7 @@ lpgLog_MSE <- c(crossprod(lpgLog$residuals))/length(lpgLog$residuals)
 
 #Predict
 predict_lpgLog <- as.data.frame(predict(object = lpgLog, newdata = tractPreds, type = 'response', na.action = na.exclude))
-predict_lpgLog$BTUlpg <- 1000*exp(predict_lpgLog$response)
+predict_lpgLog$BTUlpg <- 1000*exp(lpgLog_MSE/2)*exp(predict_lpgLog$response)
 ```
 
 ```{r}
@@ -179,11 +184,10 @@ expected <- c(343000000000000, 165000000000000, 112000000000000)
 
 #Check Against EIA
 predict_allLog %>%
-  mutate(BTUelec = BTUelec*TOTALHH, BTUng = BTUng*TOTALHH, BTUlpg = BTUlpg*TOTALHH, BTUfo = BTUfo*TOTALHH, BTUwood = BTUwood*TOTALHH) %>%
-  mutate(BTUtract = (BTUelec + BTUng + BTUlpg + BTUfo + BTUwood)) %>%
-  group_by(state_code) %>%
-  summarize(stateTotal = sum(BTUtract), stateElec = sum(BTUelec), stateNG = sum(BTUng), stateLPG = sum(BTUlpg), stateFO = sum(BTUfo), stateWd = sum(BTUwood)) %>%
-  mutate(stateExpected = expected, propUnder = (stateExpected-stateTotal)/stateExpected)
+  mutate(county_code = str_sub(GISJOIN, 4, 7)) %>%
+  group_by(state_code, county_code) %>%
+  summarize(elec = mean(BTUelec), ng = mean(BTUng), lpg = mean(BTUelec), wood = mean(BTUwood)) %>%
+  ggplot() + geom_boxplot(aes(x = factor(state_code), y = lpg))
 ```
 
 ```{r}
@@ -194,9 +198,8 @@ predict_allLog %>%
 
 ```{r}
 predict_allLog %>%
-  mutate(BTUelec_scaleHH = BTUelec*TOTALHH, BTUng_scaleHH = BTUng*TOTALHH, BTUlpg_scaleHH = BTUlpg*TOTALHH, BTUfo_scaleHH = BTUfo*TOTALHH, BTUwd_scaleHH = BTUwood*TOTALHH) %>%
-  mutate(BTUelec_scalePop = BTUelec*TOTALPOP, BTUng_scalePop = BTUng*TOTALPOP, BTUlpg_scalePop = BTUlpg*TOTALPOP, BTUfo_scalePop = BTUfo*TOTALPOP, BTUwd_scalePop = BTUwood*TOTALPOP) %>%
-  write.csv('output/output_May29_byPopAndHH.csv')
+  mutate(KWHelec = BTUelec/3412, CFng = BTUng/1015, GALlpg = BTUlpg/91502) %>%
+  write.csv('output/output_May31.csv')
 ```
 
 http://www.swenergy.org/Data/Sites/1/media/documents/publications/factsheets/nv-factsheet.pdf
