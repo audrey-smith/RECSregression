@@ -19,10 +19,9 @@ library(mapview)
 predictedVals <- read.csv('output/output_May31.csv')
 predictorVars <- read.csv('predictors/ACSclimate_clean.csv')
 supplementVals <- read.csv('predictors/demographics_tract.csv')
-year <- read.csv('predictors/medYearBuilt.csv') %>% select(GISJoinMatchCode, EstimatesMedianyearstructurebuilt) %>% rename('medYearBuilt' = 'EstimatesMedianyearstructurebuilt', 'GISJOIN'='GISJoinMatchCode')
+year <- read.csv('predictors/medYearBuilt.csv') %>% transmute(medYearBuilt = EstimatesMedianyearstructurebuilt, GISJOIN = GISJoinMatchCode)
 
 fittedTracts <- left_join(predictedVals, predictorVars, by = 'GISJOIN') %>% left_join(supplementVals, by = 'GISJOIN') %>% left_join(year, by = 'GISJOIN')
-
 colnames(fittedTracts)
 ```
 
@@ -38,21 +37,28 @@ ggplot(fittedTracts) + geom_point(aes(x = pop_per_sqmi, y = BTUng+BTUelec+BTUwoo
 
 ```{r}
 ### MEDIAN HOUSEHOLD INCOME
-subset(fittedTracts, state_name.x == 'New Mexico') %>%
-ggplot() + geom_point(aes(x = median_household_income, y = BTUelec+BTUng+BTUlpg+BTUwood), color = 'aquamarine3', alpha = 1) +
-  geom_smooth(aes(x = median_household_income, y = BTUelec+BTUng+BTUlpg+BTUwood), color = 'aquamarine3', method = 'lm', se = T, alpha = .5) +
-  scale_color_manual(values = c('darkslategray4', 'orange', 'aquamarine3'), 'State') + scale_fill_manual(palette = c('darkslategray4', 'darkorange2', 'aquamarine4'), 'State') +
-  #ggtitle('Income and Residential Energy Consumption') + 
+
+medianIncome <- function(state, colorDot) {
+subset(fittedTracts, state_name.x == state) %>%
+ggplot() + geom_point(aes(x = median_household_income, y = BTUelec+BTUng), color = colorDot, alpha = 1) +
+  geom_smooth(aes(x = median_household_income, y = BTUelec+BTUng), color = 'gray65', method = 'lm', se = T, alpha = .5) +
+  #scale_color_manual(values = c('darkslategray4', 'orange', 'aquamarine3'), 'State') + scale_fill_manual(palette = c('darkslategray4', 'darkorange2', 'aquamarine4'), 'State') +
+  ggtitle(paste('Income and Residential Energy Consumption -', state, sep = ' ')) + 
   xlab('Census Tract Median Household Income') + ylab('Annual Energy Consumption (BTU) \nfor Average Household') +
   theme(plot.title = element_text(hjust = .5, face = 'bold'), axis.title = element_text(size = 9, face = 'italic'), legend.position = 'bottom')
+}
+
+medianIncome('Colorado', 'darkslategray4')
+medianIncome('Nevada', 'orange')
+medianIncome('New Mexico', 'aquamarine3')
 ```
 
 ```{r}
 ### MEDIAN HOUSEHOLD INCOME AND PROP ELEC
-subset(fittedTracts, state_name.x == 'New Mexico') %>%
-ggplot() + geom_point(aes(x = median_household_income, y = BTUelec/(BTUelec+BTUng+BTUlpg+BTUwood)), color = 'aquamarine3', alpha = 1) +
-  geom_smooth(aes(x = median_household_income, y = BTUelec/(BTUelec+BTUng+BTUlpg+BTUwood)), color = 'aquamarine3', method = 'lm', se = T, alpha = .5) +
-  #scale_color_manual(values = c('darkslategray4', 'orange', 'aquamarine3'), 'State') + scale_fill_manual(palette = c('darkslategray4', 'darkorange2', 'aquamarine4'), 'State') +
+subset(fittedTracts, state_name.x %in% c('New Mexico', 'Nevada', 'Colorado')) %>%
+ggplot() + geom_point(aes(x = median_household_income, y = BTUelec/(BTUelec+BTUng), color = state_name.x), alpha = 1) +
+  #geom_smooth(aes(x = median_household_income, y = BTUelec/(BTUelec+BTUng+BTUlpg+BTUwood)), color = 'aquamarine3', method = 'lm', se = T, alpha = .5) +
+  scale_color_manual(values = c('darkslategray4', 'orange', 'aquamarine3'), 'State') + scale_fill_manual(palette = c('darkslategray4', 'darkorange2', 'aquamarine4'), 'State') +
   #ggtitle('Electric Share of Residential Energy Consumption by Income') + 
   xlab('Census Tract Median Household Income') + ylab('Proportion of Total Household Energy \n Consumption Comprised of Electric') +
   theme(plot.title = element_text(hjust = .5, face = 'bold'), axis.title = element_text(size = 9, face = 'italic'), legend.position = 'bottom')
@@ -60,9 +66,9 @@ ggplot() + geom_point(aes(x = median_household_income, y = BTUelec/(BTUelec+BTUn
 
 ```{r}
 ### PROP WHITE AND PROP ELEC
-subset(fittedTracts, medYearBuilt > 1930 & state_name.x == 'New Mexico') %>%
-ggplot() + geom_point(aes(x = 1-(not_HL_white/total_population), y = BTUelec+BTUng+BTUlpg+BTUwood), color = 'aquamarine3', alpha = 1) +
-  geom_smooth(aes(x = 1-(not_HL_white/total_population), y = BTUelec+BTUng+BTUlpg+BTUwood), color = 'aquamarine3', method = 'lm', se = T, alpha = .5) +
+subset(fittedTracts, medYearBuilt > 1930) %>%
+ggplot() + geom_point(aes(x = 1-(not_HL_white/total_population), y = BTUelec/(BTUelec+BTUng), color = state_name.x), alpha = 1) +
+  #geom_smooth(aes(x = 1-(not_HL_white/total_population), y = BTUelec+BTUng+BTUlpg+BTUwood), color = 'aquamarine3', method = 'lm', se = T, alpha = .5) +
   scale_color_manual(values = c('darkslategray4', 'orange', 'aquamarine3'), 'State') +
   #ggtitle('Residential Energy Consumption by Proportion Minority') + 
   xlab('Census Tract Proportion Minority') + ylab('Household Energy Consumption (BTU)') +
@@ -95,9 +101,44 @@ subset(fittedTracts, state_name.x == 'New Mexico') %>%
   theme(plot.title = element_text(hjust = .5, face = 'bold'), axis.title = element_text(size = 9, face = 'italic'), legend.position = 'bottom')
 ```
 
+```{r}
+fittedTracts$PRNG <- ifelse(fittedTracts$state_code.x == 8, .00772, ifelse(fittedTracts$state_code.x == 32, .00789, .00924)) #Dollar/ft3 (2018)
+fittedTracts$PREL <- ifelse(fittedTracts$state_code.x == 8, .1204, ifelse(fittedTracts$state_code.x == 32, .1247, .1212)) #Dollars/kWh
+fittedTracts$PRLPG <- ifelse(fittedTracts$state_code.x == 8, 23.03, ifelse(fittedTracts$state_code.x == 32, 29.97, 26.07))
 
+energyBurden <- function(state, dotColor){
+fittedTracts %>%
+  subset(state_name.x == state) %>%
+  mutate(spendElec = PREL*(BTUelec/3412), spendNG = PRNG*(BTUng/1034), spendTot = spendElec+spendNG, propSpend = spendTot/median_household_income) %>%
+  ggplot() + geom_point(aes(x = median_household_income, y = propSpend), color = dotColor) +
+  geom_smooth(aes(x = median_household_income, y = propSpend), color = 'gray65', se = T) +
+  #scale_color_manual(values = c('darkslategray4', 'orange', 'aquamarine3'), 'State') + 
+  ggtitle(paste('Household Income and Energy Burden -', state, sep = ' ')) + 
+  xlab('\nMedian Household Income') + ylab('Proportion Income Spent on Electricity & Natural Gas\n (Annual Expenditures / Household Income) \n') +
+  theme(plot.title = element_text(hjust = .5, face = 'bold'), axis.title = element_text(size = 9, face = 'italic'), legend.position = 'bottom')
 
+  }
 
+energyBurden('Colorado', 'darkslategray4')
+energyBurden('New Mexico', 'aquamarine3')
+energyBurden('Nevada', 'orange')
+
+fittedTracts %>%
+  mutate(spendElec = PREL*(BTUelec/3412), spendNG = PRNG*(BTUng/1034), spendTot = spendElec+spendNG, propSpend = spendTot/median_household_income) %>%
+  ggplot() + geom_point(aes(x = median_household_income, y = propSpend, color = state_name.x)) +
+  geom_smooth(aes(x = median_household_income, y = propSpend), color = 'gray65', se = T) +
+  scale_color_manual(values = c('darkslategray4', 'orange', 'aquamarine3'), 'State') + 
+  ggtitle('Household Income and Energy Burden') + 
+  xlab('\nMedian Household Income') + ylab('Proportion Income Spent on Electricity & Natural Gas\n (Annual Expenditures / Household Income) \n') +
+  theme(plot.title = element_text(hjust = .5, face = 'bold'), axis.title = element_text(size = 9, face = 'italic'), legend.position = 'bottom')
+```
+
+```{r}
+co_businesses <- read.csv('C:/Users/18313/Desktop/nvNMco/data/commercial/CO_businesses_geocode.csv') %>% filter(entitystatus %in% c('Good Standing', 'Delinquent')) %>%
+  dplyr::select(entityid, entityname, principaladdress1, principaladdress2, principalcity, principalstate, principalcountry, entitytype, entitystatus, entityformdate)
+
+co_businesses %>% write.csv('C:/Users/18313/Desktop/nvNMco/data/commercial/CObusi_goodStanding.csv')
+```
 
 
 

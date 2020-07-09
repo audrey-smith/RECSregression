@@ -1,0 +1,233 @@
+---
+title: "Energy Equity Residential Energy Consumption"
+author: "Audrey Smith"
+date: 5/8/2020"
+output: html_document
+---
+
+_Setting up .rmd file_
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+library(tidyverse)
+library(survey)
+library(fastDummies)
+library(sf)
+library(data.table)
+library(MASS)
+```
+
+#Read in Data
+Note - there's a big mismatch between what I've hand-calculated as electricity and NG price based on the RECS data and the prices downloaded from the EIA site. I'm fairly certain they are the same units - so unsure what the source of the discrepancy is.
+```{r - Read RECS data and set study design}
+#Reading in RECS data
+recs15_mtn <- read.csv('RECS/recs2015_mountain_clean.csv')
+recs15_close <- read.csv('RECS/recs2015_public_clean.csv') %>% filter(DIVISION %in% c(4, 7, 8, 9))
+recs15_usa <- read.csv('RECS/recs2015_public_clean.csv') #%>% filter(DIVISION %in% c(1, 2) == FALSE)
+
+#Generating weight and rep weights
+generateDes <- function(recs15FUEL, recs15_geo){
+  
+  recsData <- subset(recs15_geo, recs15FUEL > 0) %>%
+    #mutate(PRNG = 10*DOLLARNG/CUFEETNG, PREL = 100*DOLLAREL/KWH) %>%
+    mutate(PRNG = 1000*DOLLARNG/BTUNG, 1000*DOLLAREL/BTUEL) %>%
+    mutate(PRLPG = 1000*DOLLARLP/BTULP, PRFO = 1000*DOLLARFO/BTUFO)
+  
+  recsWeights <- pull(recsData, NWEIGHT)
+  colsBrr <- subset(colnames(recsData), grepl('^BRRWT', colnames(recsData)) == T)
+  recsBrr <- dplyr::select(recsData, colsBrr)
+  
+  recsDes <- svrepdesign(weights = recsWeights, repweights = recsBrr, type = 'Fay', rho = .5, mse = TRUE, data = recsData)
+  
+  return(recsDes)
+}
+
+#Setting survey design
+recsDes_EL <- generateDes(recs15_mtn$KWH, recs15_mtn)
+recsDes_NG <- generateDes(recs15_mtn$CUFEETNG, recs15_mtn)
+recsDes_LPG <- generateDes(recs15_usa$GALLONLP, recs15_usa)
+recsDes_FO <- generateDes(recs15_usa$GALLONFO, recs15_usa)
+recsDes_WD <- generateDes(recs15_usa$WOODAMT, recs15_usa)
+```
+
+```{r - Read in ACS Data}
+tractPreds <- read.csv('predictors/ACSclimate_clean.csv') %>% dplyr::select(-X) %>% filter(TOTALPOP != 0 & TOTALHH != 0)
+tractPreds$state_code <- substr(tractPreds$GISJOIN, 2, 3)
+
+tractPreds_new <- read.csv('predictors/ACSclimate_June26.csv') %>%
+  dplyr::select(GISJOIN,UGASHERE, UATYP10, UATYP10_R, UATYP10_C, UATYP10_U, HDD65, CDD65) %>%
+  rename('HDD65_new'='HDD65', 'CDD65_new'='CDD65')
+
+#Virtually all NAs left are from tracts where data available at individual but not HH level - need to sub in individual data for these
+tractPreds <- drop_na(tractPreds)
+
+tractPreds <- left_join(tractPreds, tractPreds_new, by = 'GISJOIN')
+
+#Add energy prices from EIA
+#tractPreds$PREL <- ifelse(tractPreds$state_code == 8, 12.04, ifelse(tractPreds$state_code == 32, 12.47, 12.12))
+#tractPreds$PRNG <- ifelse(tractPreds$state_code == 8, 7.72, ifelse(tractPreds$state_code == 32, 7.89, 9.24))
+
+tractPreds$PRNG <- ifelse(tractPreds$state_code == 8, (7.21+7.63+6.95+7.83+8.51)/5, 
+                          ifelse(tractPreds$state_code == 32, (8.92+8.48+9.83+11.37+11.07)/5, 
+                                 (7.62+8.86+7.71+8.31+9.79)/5))
+
+tractPreds$PRFO <- ifelse(tractPreds$state_code == 8, (19.34+17.23+12.81+14.25+23.88)/5, 
+                          ifelse(tractPreds$state_code == 32, (22.35+19.17+16.78+20.14+28.72)/5, 
+                                 (17.09+15.51+13.37+15.76+25.12)/5))
+
+tractPreds$PRLPG <- ifelse(tractPreds$state_code == 8, (23.93+23.02+19.73+20.68+27.59)/5,
+                           ifelse(tractPreds$state_code == 32, (31.2+29.97+25.56+26.84+36.1)/5, 
+                                  (27.10+26.07+22.33+23.41+31.25)/5))
+
+
+tractPreds$PREL <- ifelse(tractPreds$state_code == 8, (35.6+35.65+35.39+35.52+35.7)/5, 
+                          ifelse(tractPreds$state_code == 32, (34.72+35.13+33.43+37.39+37.9)/5, 
+                                 (37.17+37.75+35.27+36.55+35.99)/5))
+
+fuelHeat <- tractPreds[,c(1,69:74)]
+```
+
+## Log Models by Fuel Type
+```{r}
+### ELECTRICITY ###
+#Full
+elecLog_full <- svyglm(log(BTUEL+.0000000001) ~ PREL + DIVISION_8 + CLIMATE_HOTDRY + FUELHEAT_1 + FUELHEAT_2 + FUELHEAT_5 + FUELHEAT_7 + HDD65 + CDD65 + HHAGE + HHSEX_1 + log(NHSLDMEM) + NUMCHILD + EMPLOYHH_12 + SDESCENT_1 + MONEYPY_2 + MONEYPY_3 + MONEYPY_45 + MONEYPY_678 + HOUSEHOLDER_RACE_2 + HOUSEHOLDER_RACE_3 + HOUSEHOLDER_RACE_4 + HOUSEHOLDER_RACE_5 + HOUSEHOLDER_RACE_7 + TOTROOMS + TOTROOMSSQ + YEARMADERANGE_2 + YEARMADERANGE_3 + YEARMADERANGE_4 + YEARMADERANGE_5 + YEARMADERANGE_6 + YEARMADERANGE_7 + YEARMADERANGE_8 + TYPEHUQ_1 + TYPEHUQ_3 + TYPEHUQ_4 + TYPEHUQ_5 + HEATHOME + ELPAY_1, family = gaussian(identity), design = recsDes_EL)
+
+#Select
+elecLog <- stepAIC(object = elecLog_full, direction = 'backward', trace = F)
+elecLog_MSE <- c(crossprod(elecLog$residuals))/length(elecLog$residuals)
+
+#Predict
+predict_elecLog <- as.data.frame(predict(object = elecLog, newdata = tractPreds, type = 'response', na.action = na.include))
+predict_elecLog$BTUelec <- 1000*exp(predict_elecLog$response)*exp(elecLog_MSE/2)
+
+#Compare
+expectElec <- c(65800000000000, 45900000000000, 23300000000000)
+
+summary(elecLog)
+as.data.frame(cbind(GISJOIN = tractPreds$GISJOIN, state_code = tractPreds$state_code, TOTALHH = tractPreds$TOTALHH, predict_elecLog)) %>%
+  group_by(state_code) %>%
+  summarize(elecPredict = sum(TOTALHH*BTUelec)) %>%
+  cbind(expectElec) %>%
+  mutate(ratioElec = elecPredict/expectElec)
+```
+
+```{r}
+### NATURAL GAS ###
+#Full
+ngLog_full <- svyglm(log(BTUNG+.0000000001) ~ PRNG + CLIMATE_HOTDRY + FUELHEAT_1 + FUELHEAT_2 + FUELHEAT_5 + FUELHEAT_7 + HDD65 + CDD65 + HHAGE + HHSEX_1 + log(NHSLDMEM) + NUMCHILD + EMPLOYHH_12 + SDESCENT_1 + MONEYPY_2 + MONEYPY_3 + MONEYPY_45 + MONEYPY_678 + TOTROOMS + TOTROOMSSQ + YEARMADERANGE_2 + YEARMADERANGE_3 + YEARMADERANGE_4 + YEARMADERANGE_5 + YEARMADERANGE_6 + YEARMADERANGE_7 + YEARMADERANGE_8+ TYPEHUQ_1 + TYPEHUQ_3 + TYPEHUQ_4 + TYPEHUQ_5 + HOUSEHOLDER_RACE_2 + HOUSEHOLDER_RACE_3 + HOUSEHOLDER_RACE_4 + HOUSEHOLDER_RACE_5 + ELPAY_1, family = gaussian(identity), design = recsDes_NG)
+
+#Log
+ngLog <- stepAIC(object = ngLog_full, direction = 'backward', trace = F)
+ngLog_MSE <- c(crossprod(ngLog$residuals))/length(ngLog$residuals)
+
+#Predict
+predict_ngLog <- as.data.frame(predict(object = ngLog, newdata = tractPreds, type = 'response', na.action = na.exclude))
+predict_ngLog$BTUng <- 1000*exp(predict_ngLog$response)*exp(ngLog_MSE/2)
+predict_ngLog$CFng <- predict_ngLog$BTUng/1037
+predict_ngLog <- mutate(predict_ngLog, COng = 40*(CFng/1000000), NOxNG = 94*(CFng/1000000), SOxNG = .6*(CFng/1000000), TOGng = 11*(CFng/1000000), PMng = 7.6*(CFng/1000000),
+                        CO2ng = 117*BTUng/1000000)
+predict_ngLog <- dplyr::select(predict_ngLog, -c(response, SE))
+
+#Compare
+expectNG   <- c(137600000000000, 43400000000000, 35600000000000)
+summary(ngLog)
+
+as.data.frame(cbind(GISJOIN = tractPreds$GISJOIN, state_code = tractPreds$state_code, TOTALHH = tractPreds$TOTALHH, predict_ngLog)) %>%
+  group_by(state_code) %>%
+  summarize(ngPredict = sum(TOTALHH*BTUng)) %>%
+  cbind(expectNG) %>%
+  mutate(ratioNG = ngPredict/expectNG)
+```
+
+```{r}
+### LIQUID PROPANE GAS ###
+#Full
+lpgLog <- svyglm(log(BTULP + .0000000001) ~ HDD65 + HDD65SQ + CDD65 + TOTROOMS + TOTROOMSSQ + HEATHOME + log(NHSLDMEM) + MONEYPY_45 + MONEYPY_678 + YEARMADERANGE_1 + YEARMADERANGE_2 + YEARMADERANGE_3 + YEARMADERANGE_4 + YEARMADERANGE_5 + YEARMADERANGE_6 + YEARMADERANGE_7 + ELPAY_1 + UGASHERE + UATYP10_R + TYPEHUQ_1 + DIVISION_8 + DIVISION_9, family = gaussian(identity), design = recsDes_LPG)
+
+#Log
+#lpgLog <- stepAIC(object = lpgLog_full, direction = 'backward', trace = F)
+lpgLog_MSE <- c(crossprod(lpgLog$residuals))/length(lpgLog$residuals)
+ 
+#Predict
+predict_lpgLog <- as.data.frame(predict(object = lpgLog, newdata = tractPreds, type = 'response', na.action = na.exclude))
+predict_lpgLog$BTUlpg <- 1000*exp(predict_lpgLog$response)*exp(lpgLog_MSE/2)
+predict_lpgLog$GALlpg = predict_lpgLog$BTUlpg/91502
+predict_lpgLog <- mutate(predict_lpgLog, COlpg = 1.85*GALlpg/1000, NOxLPG = 18*GALlpg/1000, SOxLPG = 36*GALlpg/1000, TOGlpg = 2.493*GALlpg/1000, PMlpg = .28*GALlpg/1000,
+                         CO2lpg = 139*BTUlpg/1000000)
+predict_lpgLog <- dplyr::select(predict_lpgLog, -c(SE, response))
+
+#Compare
+expectLPG  <- c(11600000000000, 1900000000000, 4400000000000)
+
+as.data.frame(cbind(GISJOIN = tractPreds$GISJOIN, state_code = tractPreds$state_code, TOTALHH = tractPreds$TOTALHH, predict_lpgLog, FUELHEAT = fuelHeat$FUELHEAT_2)) %>%  
+  group_by(state_code) %>%
+  summarize(lpgPredict = sum(1.25*TOTALHH*FUELHEAT*BTUlpg)) %>% # 1.25 is arbitrary - for homes using propane for other uses than sph
+  cbind(expectLPG) %>%
+  mutate(ratioLPG = lpgPredict/expectLPG)
+```
+
+
+```{r}
+### FUEL OIL ###
+#Full
+foLog <- svyglm(log(BTUFO+.0000000001) ~ UATYP10_R + UATYP10_C + HDD65 + CLIMATE_HOTDRY + UGASHERE + TYPEHUQ_1 + YEARMADERANGE_5 + YEARMADERANGE_6 + YEARMADERANGE_7 + MONEYPY_678, family = gaussian(identity), design = recsDes_FO)
+
+#Log
+#foLog <- stepAIC(object = foLog_full, direction = 'backward', trace = F)
+foLog_MSE <- c(crossprod(foLog$residuals))/length(foLog$residuals)
+
+#Predict
+predict_foLog <- as.data.frame(predict(object = foLog, newdata = tractPreds, type = 'response', na.action = na.exclude))
+predict_foLog$BTUfo <- 1000*exp(predict_foLog$response)*exp(foLog_MSE/2)
+predict_foLog$GALfo <- predict_foLog$BTUfo/139000
+predict_foLog <- mutate(predict_foLog, COfo = 5*GALfo/1000, NOxFO = 18*GALfo/1000, SOxFO = 36*GALfo/1000, TOGfo = 2.493*GALfo/1000, PMfo = 2.5*GALfo/1000,
+                        CO2fo = 161.3*BTUfo/1000000)
+predict_foLog <- dplyr::select(predict_foLog, -c(SE, response))
+
+#Compare
+expectFO   <- c(200000000000, 200000000000, 50000000000) #NM less than .05 trillion
+
+as.data.frame(cbind(GISJOIN = tractPreds$GISJOIN, state_code = tractPreds$state_code, TOTALHH = tractPreds$TOTALHH, FUELHEAT = fuelHeat$FUELHEAT_3, predict_foLog)) %>%
+  group_by(state_code) %>%
+  summarize(foPredict = sum(TOTALHH*BTUfo*FUELHEAT)) %>%
+  cbind(expectFO) %>%
+  mutate(ratioFO = foPredict/expectFO)
+```
+
+```{r}
+### WOOD ###
+#Full
+wdLog_full <- svyglm(log(WOODBTU+.0000000001) ~ HDD65 + CDD65 + UATYP10_R + TOTROOMS + TOTROOMSSQ + log(NHSLDMEM) + NHSLDMEM + HHAGE + TYPEHUQ_2 + YEARMADERANGE_2 + YEARMADERANGE_3 + YEARMADERANGE_4 + YEARMADERANGE_5 + YEARMADERANGE_6 + YEARMADERANGE_7 + HOUSEHOLDER_RACE_1, family = gaussian(identity), design = recsDes_WD)
+
+#Log
+wdLog <- stepAIC(object = wdLog_full, direction = 'backward', trace = F)
+wdLog_MSE <- c(crossprod(wdLog$residuals))/length(wdLog$residuals)
+
+#Predict
+predict_wdLog <- as.data.frame(predict(object = wdLog, newdata = tractPreds, type = 'response', na.action = na.exclude))
+predict_wdLog$BTUwd <- 1000*exp(predict_wdLog$response)*exp(wdLog_MSE/2)
+
+#Compare
+expectWD <- c(11200000000000, 2700000000000, 10900000000000)
+
+as.data.frame(cbind(GISJOIN = tractPreds$GISJOIN, state_code = tractPreds$state_code, TOTALHH = tractPreds$TOTALHH, FUELHEAT = fuelHeat$FUELHEAT_7, predict_wdLog)) %>%
+  group_by(state_code) %>%
+  summarize(wdPredict = sum(FUELHEAT*TOTALHH*BTUwd)) %>%
+  cbind(expectWD) %>%
+  mutate(ratioWD = wdPredict/expectWD)
+```
+
+
+
+_All Fuels_
+https://www.eia.gov/state/seds/data.php?incfile=/state/seds/sep_sum/html/sum_btu_res.html&sid=CO
+https://www.eia.gov/tools/faqs/faq.php?id=73&t=11 - emission factors for CO2
+https://ww3.arb.ca.gov/ei/areasrc/fullpdf/full7-1_2011.pdf - Emission factors for wood
+```{r}
+predict_allLog <- as.data.frame(cbind(GISJOIN = tractPreds$GISJOIN, state_code = tractPreds$state_code, TOTALHH = tractPreds$TOTALHH, predict_elecLog, predict_ngLog, predict_lpgLog, predict_foLog, predict_wdLog, fuelHeat))
+#write.csv(predict_allLog, 'output_June27.csv')
+
+predict_elecLog
+```
+

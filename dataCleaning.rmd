@@ -21,10 +21,10 @@ options(scipen=999)
 
 ```{r - Reading in RECS data}
 #Reading in RECS data
-recs15 <- read.csv('RECS/recs2015_public_v4.csv') %>% filter(DIVISION == 8 | DIVISION == 9)
+recs15 <- read.csv('RECS/recs2015_public_v4.csv') #%>% filter(DIVISION == 8 | DIVISION == 9)
 
 #Making dummy variables for some categorical vars
-recs15 <- dummy_cols(recs15, select_columns = c('REGIONC', 'DIVISION', 'UATYP10', 'CLIMATE_REGION_PUB', 'IECC_CLIMATE_PUB',
+recs15 <- dummy_cols(recs15, select_columns = c('REGIONC', 'DIVISION', 'METROMICRO', 'UATYP10', 'CLIMATE_REGION_PUB', 'IECC_CLIMATE_PUB',
                                                 'TYPEHUQ', 'YEARMADERANGE', 'WALLTYPE', 
                                                 'HOUSEHOLDER_RACE', 'HHSEX', 'KOWNRENT', 'EDUCATION', 'MONEYPY', 'EMPLOYHH', 'SDESCENT',
                                                 'FUELHEAT', 'FUELH2O',
@@ -49,82 +49,103 @@ recs15$MONEYPY_45 <- ifelse(recs15$MONEYPY_4 == 1 | recs15$MONEYPY_5 == 1, 1, 0)
 recs15$MONEYPY_678 <- ifelse(recs15$MONEYPY_6 == 1 | recs15$MONEYPY_7 == 1 | recs15$MONEYPY_8 == 1, 1, 0)
 recs15$EMPLOYHH_12 <- ifelse(recs15$EMPLOYHH_1 == 1 | recs15$EMPLOYHH_2 == 1, 1, 0)
 
-write.csv(recs15, 'RECS/recs2015_mountain_clean.csv')
+#write.csv(recs15, 'RECS/recs2015_usa_June22.csv')
 ```
 
 ```{r - Reading in Predictor Variables from ACS and GIS}
 #Reading in demographic and housing data from ACS
-allPreds <- read.csv('predictors/nhgis0026_csv/tractAllPredictors.csv', skip = 1, header = TRUE, stringsAsFactors = FALSE)
-allPreds <- allPreds[allPreds$State.Code %in% c(8, 32, 35), c(1, 4:8, 11, 38:391)]
+allPreds <- read.csv('C:/Users/18313/Desktop/nvNMco/sector_residential/regressionData/nhgis0026_csv/tractAllPredictors.csv', skip = 1, header = TRUE, stringsAsFactors = FALSE)
+
+allPreds <- allPreds[allPreds$State.Code %in% c(8, 32, 35), ]
 colnames(allPreds) <- str_replace(colnames(allPreds), 'Estimates..', '') %>% gsub(x = ., pattern = '\\.\\.+', replacement = '.') %>% gsub(x = ., pattern = '\\.', replacement = '_') %>%
   tolower()
 
 allPreds$division_code <- ifelse(allPreds$state_code == 8, 8, 9)
+```
 
+```{r}
 #Reading in climate data from GIS
-tractHDD <- read.csv('predictors/HDD_tractAvg.txt') %>% rename('HDDavg'='MEAN')
-tractCDD <- read.csv('predictors/CDD_tractAvg.txt') %>% rename('CDDavg'='MEAN')
-tractDD <- full_join(tractHDD, tractCDD, by = 'GISJOIN') %>% dplyr::select(2, 9, 19)
+tractHDD <- read.csv('C:/Users/18313/Desktop/nvNMco/sector_residential/regressionData/HDD_CDD_June22/HDD_tract.txt') %>% rename('HDD65'='MEAN')
+tractCDD <- read.csv('C:/Users/18313/Desktop/nvNMco/sector_residential/regressionData/HDD_CDD_June22/CDD_tract.txt') %>% rename('CDD65'='MEAN')
+tractDD <- full_join(tractHDD, tractCDD, by = 'GEOID') %>% dplyr::select(GEOID, HDD65, CDD65)
 
-tractClimate <- read_sf('predictors/ACS_climateZones_int.shp') %>% as.data.frame() %>% dplyr::select(-geometry) %>% dplyr::select(GISJOIN, IECC_Clima, BA_Climate)
+tractZone <- read.csv('predictors/BAclimate.txt') %>% dplyr::select(GEOID, UATYP10, joinMatch, BA_Climate) %>% rename('GISJOIN'='joinMatch')
 
-tractClimateVars <- full_join(tractDD, tractClimate) %>%
-  mutate(HDD65 = HDDavg, CDD65 = CDDavg) %>%
-  mutate(HDD65SQ = HDDavg^2, CDD65SQ = CDDavg^2) %>%
-  mutate(CLIMATE_COLD = ifelse(BA_Climate == 'Cold' | BA_Climate == 'Very Cold', 1, 0)) %>%
-  mutate(CLIMATE_HOTDRY = ifelse(BA_Climate == 'Hot-Dry' | BA_Climate == 'Mixed-Dry', 1, 0))
+#Joining climate variables
+tractClimate <- full_join(tractDD, tractZone) 
+```
 
-tractACS <- allPreds %>%
-  mutate(TOTALPOP = total) %>%
-  mutate(TOTALHH = total_12) %>%
-  mutate(DIVISION_8 = ifelse(division_code == 8, 1, 0), DIVISION_9 = ifelse(division_code == 9, 1, 0)) %>%
-  mutate(HHSEX_1 = female/total, HHSEX_2 = male/total) %>%
-  mutate(HHAGE = median_age_total, HHAGESQ = HHAGE^2) %>%
-  mutate(HOUSEHOLDER_RACE_1 = householder_who_is_white_alone/total_12, HOUSEHOLDER_RACE_2 = householder_who_is_black_or_african_american_alone/total_12, 
-         HOUSEHOLDER_RACE_3 = householder_who_is_american_indian_and_alaska_native_alone/total_12, HOUSEHOLDER_RACE_4 = householder_who_is_asian_alone/total_12, 
-         HOUSEHOLDER_RACE_5 = householder_who_is_native_hawaiian_and_other_pacific_islander_alone/total_12, HOUSEHOLDER_RACE_6 = householder_who_is_some_other_race_alone/total_12,
-         HOUSEHOLDER_RACE_7 = householder_who_is_two_or_more_races/total_12) %>%
-  mutate(SDESCENT_0 = not_hispanic_or_latino/total, SDESCENT_1 = hispanic_or_latino/total) %>%
-  mutate(NHSLDMEM = total_13, NHSLDMEMSQ = total_13^2) %>%
-  mutate(NUMCHILD = total_4 / total_12) %>% #number of children total divided by number of households
-  mutate(NUMADULT = NHSLDMEM-NUMCHILD) %>%
-  mutate(EDUCATION_1 = (no_schooling_completed + nursery_school + kindergarten + `1st_grade` + `2nd_grade` + `3rd_grade` + `4th_grade` + `5th_grade` + `6th_grade` + `7th_grade`
+
+```{r}
+tract_ACSclimate <- inner_join(allPreds, tractClimate, by = c('gis_join_match_code'='GISJOIN'))
+
+tractACS <- tract_ACSclimate %>%
+  transmute(GISJOIN = gis_join_match_code, UATYP10 = UATYP10,
+            HDD65 = HDD65, HDD65SQ = HDD65^2, CDD65 = CDD65, CDD65SQ = CDD65^2, 
+            CLIMATE_COLD = ifelse(BA_Climate == 'Cold' | BA_Climate == 'Very Cold', 1, 0), CLIMATE_HOTDRY = ifelse(BA_Climate == 'Hot-Dry' | BA_Climate == 'Mixed-Dry', 1, 0),
+            TOTALPOP = total, TOTALHH = ifelse(total_5 > 0, total_5, total_15), # if total hh unavailable, use total housing units
+            DIVISION_8 = ifelse(division_code == 8, 1, 0), DIVISION_9 = ifelse(division_code == 9, 1, 0),
+            HHSEX_1 = female/total, HHSEX_2 = male/total,
+            HHAGE = median_age_total, HHAGESQ = HHAGE^2,
+            HOUSEHOLDER_RACE_1 = white_alone/total_2, HOUSEHOLDER_RACE_2 = black_or_african_american_alone/total_2, 
+              HOUSEHOLDER_RACE_3 = american_indian_and_alaska_native_alone/total_2, HOUSEHOLDER_RACE_4 = asian_alone/total_2, 
+              HOUSEHOLDER_RACE_5 = native_hawaiian_and_other_pacific_islander_alone/total_2, HOUSEHOLDER_RACE_6 = some_other_race_alone/total_2,
+              HOUSEHOLDER_RACE_7 = two_or_more_races/total_2,
+            SDESCENT_0 = not_hispanic_or_latino/total, SDESCENT_1 = hispanic_or_latino/total,
+            NHSLDMEM = ifelse(is.na(total_13), TOTALPOP/TOTALHH, total_13), NHSLDMEMSQ = NHSLDMEM^2,
+            NUMCHILD = total_4/TOTALHH, NUMADULT = NHSLDMEM-NUMCHILD, #number of children total divided by number of households
+            EDUCATION_1 = (no_schooling_completed + nursery_school + kindergarten + `1st_grade` + `2nd_grade` + `3rd_grade` + `4th_grade` + `5th_grade` + `6th_grade` + `7th_grade`
                         + `8th_grade` + `9th_grade` + `10th_grade` + `11th_grade` + `12th_grade_no_diploma`)/total_6,
-         EDUCATION_2 = (regular_high_school_diploma + ged_or_alternative_credential)/total_6, 
-         EDUCATION_3 = (some_college_less_than_1_year + some_college_1_or_more_years_no_degree + associate_s_degree)/total_6, EDUCATION_4 = bachelor_s_degree/total_6,
-         EDUCATION_5 = (master_s_degree + professional_school_degree + doctorate_degree)/total_6) %>%
-  mutate(MEDINCOME = median_household_income_in_the_past_12_months_in_2018_inflation_adjusted_dollars_) %>%
-  mutate(MONEYPY = ifelse(MEDINCOME < 20000, 1, ifelse(20000 >= MEDINCOME & MEDINCOME < 39999, 2, ifelse(40000 >= MEDINCOME & MEDINCOME < 59999, 3,
-                   ifelse(60000 >= MEDINCOME & MEDINCOME < 79999, 4, ifelse(80000 >= MEDINCOME & MEDINCOME < 99999, 5, ifelse(100000 >= MEDINCOME & MEDINCOME < 119000, 6,
-                   ifelse(120000 >= MEDINCOME & MEDINCOME < 139000, 7, ifelse(MEDINCOME >= 140000, 8, NA))))))))) %>%
-  mutate(MONEYPY_1 = (less_than_10_000 + `_10_000_to_14_999` + `_15_000_to_19_999`)/total_7, 
-         MONEYPY_2 = (`_20_000_to_24_999` + `_25_000_to_29_999` + `_30_000_to_34_999` + `_35_000_to_39_999`)/total_7,
-         MONEYPY_3 = (`_40_000_to_44_999` + `_45_000_to_49_999` + `_50_000_to_59_999`)/total_7, MONEYPY_45 = (`_60_000_to_74_999` + `_75_000_to_99_999`)/total_7,
-         MONEYPY_678 = (`_100_000_to_124_999` + `_125_000_to_149_999` + `_150_000_to_199_999` + `_200_000_or_more`)/total_7) %>%
-  mutate(EMPLOYHH_0 = in_labor_force_civilian_labor_force_unemployed/in_labor_force,
-         EMPLOYHH_12 = (in_labor_force_civilian_labor_force_employed + in_labor_force_armed_forces)/in_labor_force) %>%
-  mutate(TOTROOMS = median_number_of_rooms_total, TOTROOMSSQ = TOTROOMS^2) %>%
-  mutate(TYPEHUQ_1 = (mobile_home + boat_rv_van_etc_)/total_15, TYPEHUQ_2 = `1_detached`/total_15, TYPEHUQ_3 = `1_attached`/total_15, 
-         TYPEHUQ_4 = (`2` + `3_or_4`)/total_15, TYPEHUQ_5 = (`5_to_9` + `10_to_19` + `20_to_49` + `50_or_more`)/total_15) %>%
-  mutate(YEARMADERANGE = ifelse(median_year_structure_built > 1950, 1, ifelse(1950 <= median_year_structure_built & median_year_structure_built < 1960, 2,
-                         ifelse(1960 <= median_year_structure_built & median_year_structure_built < 1970, 3, 
-                         ifelse(1970 <= median_year_structure_built & median_year_structure_built < 1980, 4,
-                         ifelse(1980 <= median_year_structure_built & median_year_structure_built < 1990, 5,
-                         ifelse(1990 <= median_year_structure_built & median_year_structure_built < 2000, 6,
-                         ifelse(2000 <= median_year_structure_built & median_year_structure_built < 2010, 7, ifelse(2010 <= median_year_structure_built, 8, NA))))))))) %>%
-  mutate(YEARMADERANGE_1 = (built_1939_or_earlier + built_1940_to_1949)/total_16, YEARMADERANGE_2 = built_1950_to_1959/total_16, YEARMADERANGE_3 = built_1960_to_1969/total_16,
-         YEARMADERANGE_4 = built_1970_to_1979/total_16, YEARMADERANGE_5 = built_1980_to_1989/total_16, YEARMADERANGE_6 = built_1990_to_1999/total_16, 
-         YEARMADERANGE_7 = built_2000_to_2009/total_16, YEARMADERANGE_8 = (built_2010_to_2013 + built_2014_or_later)/total_16) %>%
-  mutate(FUELHEAT_1 = utility_gas/total_17, FUELHEAT_2 = bottled_tank_or_lp_gas/total_17, FUELHEAT_3 = fuel_oil_kerosene_etc_/total_17, FUELHEAT_5 = electricity/total_17,
-         FUELHEAT_7 = wood/total_17, FUELHEAT_21 = (coal_or_coke + solar_energy + other_fuel)/total_17) %>%
-  mutate(HEATHOME = 1-(no_fuel_used)/total_17) %>%
-  mutate(ELPAY_1 = pay_extra_for_one_or_more_utilities/total_21, ELPAY_2 = no_extra_payment_for_any_utilities/total_21)
+              EDUCATION_2 = (regular_high_school_diploma + ged_or_alternative_credential)/total_6, 
+              EDUCATION_3 = (some_college_less_than_1_year + some_college_1_or_more_years_no_degree + associate_s_degree)/total_6, EDUCATION_4 = bachelor_s_degree/total_6,
+              EDUCATION_5 = (master_s_degree + professional_school_degree + doctorate_degree)/total_6,
+            MEDINCOME = median_household_income_in_the_past_12_months_in_2018_inflation_adjusted_dollars_,
+            MONEYPY = ifelse(MEDINCOME < 20000, 1, 
+                      ifelse(20000 >= MEDINCOME & MEDINCOME < 39999, 2, 
+                      ifelse(40000 >= MEDINCOME & MEDINCOME < 59999, 3,
+                      ifelse(60000 >= MEDINCOME & MEDINCOME < 79999, 4, 
+                      ifelse(80000 >= MEDINCOME & MEDINCOME < 99999, 5, 
+                      ifelse(100000 >= MEDINCOME & MEDINCOME < 119000, 6,
+                      ifelse(120000 >= MEDINCOME & MEDINCOME < 139000, 7, 
+                      ifelse(MEDINCOME >= 140000, 8, -1)))))))), 
+            MONEYPY_1 = (less_than_10_000 + `_10_000_to_14_999` + `_15_000_to_19_999`)/total_7, 
+              MONEYPY_2 = (`_20_000_to_24_999` + `_25_000_to_29_999` + `_30_000_to_34_999` + `_35_000_to_39_999`)/total_7,
+              MONEYPY_3 = (`_40_000_to_44_999` + `_45_000_to_49_999` + `_50_000_to_59_999`)/total_7, MONEYPY_45 = (`_60_000_to_74_999` + `_75_000_to_99_999`)/total_7,
+              MONEYPY_678 = (`_100_000_to_124_999` + `_125_000_to_149_999` + `_150_000_to_199_999` + `_200_000_or_more`)/total_7,
+            EMPLOYHH_0 = in_labor_force_civilian_labor_force_unemployed/in_labor_force,
+              EMPLOYHH_12 = (in_labor_force_civilian_labor_force_employed + in_labor_force_armed_forces)/in_labor_force,
+            TOTROOMS = median_number_of_rooms_total, TOTROOMSSQ = TOTROOMS^2,
+            TYPEHUQ_1 = (mobile_home + boat_rv_van_etc_)/total_15, TYPEHUQ_2 = `1_detached`/total_15, TYPEHUQ_3 = `1_attached`/total_15, 
+                TYPEHUQ_4 = (`2` + `3_or_4`)/total_15, TYPEHUQ_5 = (`5_to_9` + `10_to_19` + `20_to_49` + `50_or_more`)/total_15,
+            #YEARMADERANGE = ifelse(median_year_structure_built > 1950, 1, ifelse(1950 <= median_year_structure_built & median_year_structure_built < 1960, 2,
+             #            ifelse(1960 <= median_year_structure_built & median_year_structure_built < 1970, 3, 
+              #           ifelse(1970 <= median_year_structure_built & median_year_structure_built < 1980, 4,
+               #          ifelse(1980 <= median_year_structure_built & median_year_structure_built < 1990, 5,
+                #         ifelse(1990 <= median_year_structure_built & median_year_structure_built < 2000, 6,
+                 #        ifelse(2000 <= median_year_structure_built & median_year_structure_built < 2010, 7, ifelse(2010 <= median_year_structure_built, 8, -1)))))))),
+            YEARMADERANGE_1 = (built_1939_or_earlier + built_1940_to_1949)/total_16, YEARMADERANGE_2 = built_1950_to_1959/total_16, YEARMADERANGE_3 = built_1960_to_1969/total_16,
+              YEARMADERANGE_4 = built_1970_to_1979/total_16, YEARMADERANGE_5 = built_1980_to_1989/total_16, YEARMADERANGE_6 = built_1990_to_1999/total_16, 
+              YEARMADERANGE_7 = built_2000_to_2009/total_16, YEARMADERANGE_8 = (built_2010_to_2013 + built_2014_or_later)/total_16,
+            UGASHERE = ifelse(utility_gas/total_17 < .2, 0, 1),
+            FUELHEAT_1 = utility_gas/total_17, FUELHEAT_2 = bottled_tank_or_lp_gas/total_17, FUELHEAT_3 = fuel_oil_kerosene_etc_/total_17, FUELHEAT_5 = electricity/total_17,
+              FUELHEAT_7 = wood/total_17, FUELHEAT_21 = (coal_or_coke + solar_energy + other_fuel)/total_17,
+            HEATHOME = 1-(no_fuel_used/total_17),
+            ELPAY_1 = pay_extra_for_one_or_more_utilities/total_21, ELPAY_2 = no_extra_payment_for_any_utilities/total_21,
+            UATYP10_R = ifelse(UATYP10 == 'R', 1, 0), UATYP10_U = ifelse(UATYP10 == 'U', 1, 0), UATYP10_C = ifelse(UATYP10 == 'C', 1, 0))
 
-tractACS <- tractACS[, c(1:7, 362:420)]
+write.csv(tractACS, 'predictors/ACSclimate_June26_new.csv')
+```
 
-tractPreds <- inner_join(tractClimateVars, tractACS, by = c('GISJOIN' = 'gis_join_match_code'))
+tractPreds <- inner_join(tractClimate, tractACS, by = c('GISJOIN' = 'gis_join_match_code'))
 
-write.csv(tractPreds, 'predictors/ACSclimate_clean.csv')
+#write.csv(tractPreds, 'predictors/ACSclimate_clean.csv')
+
+
+preds <- read.csv('predictors/ACSclimate_June22.csv')
+
+
+
+inner_join(preds, ug, by = c('GISJOIN'='GIS.Join.Match.Code')) %>% dplyr::select(-X) %>% write.csv('predictors/ACSclimate_June22.csv')
 ```
 
 
